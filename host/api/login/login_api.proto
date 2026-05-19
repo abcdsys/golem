@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package login.api;
+
+option go_package = "github.com/sbgayhub/golem/host/api/login;loginapi";
+
+
+// ==================== 通用响应 ====================
+
+// OperateResponse 通用操作响应（字段编号与 SDK proto 对齐）
+message OperateResponse {
+  int32 code = 1;     // 状态码（0=成功）
+  string message = 2; // 提示信息
+}
+
+// ==================== 扫码登录 ====================
+
+// LoginRequest 扫码登录请求
+message LoginRequest {}
+
+// QRCodeResult 二维码结果（字段编号与 SDK proto 对齐）
+message QRCodeResult {
+  string uuid = 1;         // 二维码 UUID
+  string data = 2;         // 二维码 Base64 数据
+  string url = 3;          // 二维码 URL
+  uint32 check_time = 4;   // 检查间隔时间（秒）
+  uint32 expired_time = 5; // 过期时间（秒）
+}
+
+// ==================== 初始化 ====================
+
+// InitRequest 初始化请求
+message InitRequest {}
+
+// InitResponse 初始化响应（字段编号与 SDK proto 对齐）
+message InitResponse {
+  int32 code = 1;     // 状态码（0=成功）
+  string message = 2; // 提示信息
+}
+
+// ==================== 密码登录 ====================
+
+// PasswordLoginRequest 密码登录请求（字段编号与 SDK proto 对齐）
+message PasswordLoginRequest {
+  string username = 1;    // 微信号/手机号
+  string password = 2;    // 密码
+  string device_type = 3; // 设备类型
+  string device_name = 4; // 设备名称
+  string device_id = 5;   // 设备 ID
+}
+
+// PasswordLoginResult 密码登录结果（字段编号与 SDK proto 对齐）
+message PasswordLoginResult {
+  uint32 uin = 1;      // UIN
+  string username = 2; // 用户名
+  string nickname = 3; // 昵称
+  string alias = 4;    // 微信号
+  string email = 5;    // 邮箱
+  string mobile = 6;   // 手机号
+}
