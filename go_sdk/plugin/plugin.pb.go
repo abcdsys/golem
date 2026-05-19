@@ -118,8 +118,9 @@ func (x *Metadata) GetAlwaysRun() bool {
 
 // Event 事件
 type Event struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	Topic string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"` // 事件主题
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Topic  string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`   // 事件主题
+	Sender string                 `protobuf:"bytes,2,opt,name=sender,proto3" json:"sender,omitempty"` // 事件发送者username
 	// Types that are valid to be assigned to Payload:
 	//
 	//	*Event_Error
@@ -164,6 +165,13 @@ func (*Event) Descriptor() ([]byte, []int) {
 func (x *Event) GetTopic() string {
 	if x != nil {
 		return x.Topic
+	}
+	return ""
+}
+
+func (x *Event) GetSender() string {
+	if x != nil {
+		return x.Sender
 	}
 	return ""
 }
@@ -216,19 +224,19 @@ type isEvent_Payload interface {
 }
 
 type Event_Error struct {
-	Error string `protobuf:"bytes,2,opt,name=error,proto3,oneof"` // 错误消息
+	Error string `protobuf:"bytes,3,opt,name=error,proto3,oneof"` // 错误消息
 }
 
 type Event_System struct {
-	System string `protobuf:"bytes,3,opt,name=system,proto3,oneof"` // 系统消息
+	System string `protobuf:"bytes,4,opt,name=system,proto3,oneof"` // 系统消息
 }
 
 type Event_Message struct {
-	Message *message.Message `protobuf:"bytes,4,opt,name=message,proto3,oneof"` // 消息
+	Message *message.Message `protobuf:"bytes,5,opt,name=message,proto3,oneof"` // 消息
 }
 
 type Event_SessionExpired struct {
-	SessionExpired *SessionExpired `protobuf:"bytes,5,opt,name=session_expired,json=sessionExpired,proto3,oneof"` // 会话到期
+	SessionExpired *SessionExpired `protobuf:"bytes,6,opt,name=session_expired,json=sessionExpired,proto3,oneof"` // 会话到期
 }
 
 func (*Event_Error) isEvent_Payload() {}
@@ -2266,13 +2274,14 @@ const file_plugin_plugin_proto_rawDesc = "" +
 	"\bpriority\x18\x05 \x01(\x05R\bpriority\x12\x12\n" +
 	"\x04next\x18\x06 \x01(\bR\x04next\x12\x1d\n" +
 	"\n" +
-	"always_run\x18\a \x01(\bR\talwaysRun\"\xcb\x01\n" +
+	"always_run\x18\a \x01(\bR\talwaysRun\"\xe3\x01\n" +
 	"\x05Event\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x16\n" +
-	"\x05error\x18\x02 \x01(\tH\x00R\x05error\x12\x18\n" +
-	"\x06system\x18\x03 \x01(\tH\x00R\x06system\x12,\n" +
-	"\amessage\x18\x04 \x01(\v2\x10.message.MessageH\x00R\amessage\x12A\n" +
-	"\x0fsession_expired\x18\x05 \x01(\v2\x16.plugin.SessionExpiredH\x00R\x0esessionExpiredB\t\n" +
+	"\x06sender\x18\x02 \x01(\tR\x06sender\x12\x16\n" +
+	"\x05error\x18\x03 \x01(\tH\x00R\x05error\x12\x18\n" +
+	"\x06system\x18\x04 \x01(\tH\x00R\x06system\x12,\n" +
+	"\amessage\x18\x05 \x01(\v2\x10.message.MessageH\x00R\amessage\x12A\n" +
+	"\x0fsession_expired\x18\x06 \x01(\v2\x16.plugin.SessionExpiredH\x00R\x0esessionExpiredB\t\n" +
 	"\apayload\"d\n" +
 	"\x0eSessionExpired\x12\x1b\n" +
 	"\tplugin_id\x18\x01 \x01(\tR\bpluginId\x12\x1d\n" +

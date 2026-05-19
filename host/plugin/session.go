@@ -68,12 +68,12 @@ func newSessionTimer(s *session) *time.Timer {
 		// 先发事件（session 仍在，dispatcher 过滤确保只有劫持插件收到）
 		Publish(&plugin.Event{
 			Topic:  "session::expired",
-			Sender: s.SenderContact,
+			Sender: s.Sender,
 			Payload: &plugin.Event_SessionExpired{
 				SessionExpired: &plugin.SessionExpired{
-					PluginId: s.PluginName,
-					Sender:   s.Sender,
-					Reason:   "timeout",
+					PluginId:  s.PluginName,
+					SessionId: s.Sender,
+					Reason:    "timeout",
 				},
 			},
 		})

@@ -12,10 +12,6 @@ import (
 func dispatcher() {
 	for e := range events {
 		slog.Debug("消费事件", "topic", e.Topic)
-		sender := ""
-		if e.Sender != nil {
-			sender = e.Sender.GetUsername()
-		}
 
 		for _, p := range plugins {
 			// 跳过禁用的插件
@@ -29,12 +25,12 @@ func dispatcher() {
 			}
 
 			// 检查发送者是否被允许
-			if sender != "" && !isAllowed(sender, p) {
+			if e.Sender != "" && !isAllowed(e.Sender, p) {
 				continue
 			}
 
 			// 会话劫持检查：只有劫持插件和 AlwaysRun 插件允许接收
-			if sender != "" && !isSessionAllowed(sender, p.Metadata) {
+			if e.Sender != "" && !isSessionAllowed(e.Sender, p.Metadata) {
 				continue
 			}
 
@@ -51,8 +47,8 @@ func dispatcher() {
 				}
 
 				// 事件分发成功，刷新会话时间
-				if sender != "" && isSessionActive(sender) && p.Name == getSessionPlugin(sender) {
-					refreshSession(sender)
+				if e.Sender != "" && isSessionActive(e.Sender) && p.Name == getSessionPlugin(e.Sender) {
+					refreshSession(e.Sender)
 				}
 			}()
 		}
