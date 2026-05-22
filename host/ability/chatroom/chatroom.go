@@ -2,13 +2,18 @@
 package chatroomability
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/duke-git/lancet/v2/maputil"
+	"github.com/duke-git/lancet/v2/stream"
 	contactability "github.com/sbgayhub/golem/host/ability/contact"
 	"github.com/sbgayhub/golem/host/api"
 	chatroomapi "github.com/sbgayhub/golem/host/api/chatroom"
+	contactapi "github.com/sbgayhub/golem/host/api/contact"
 	sdk "github.com/sbgayhub/golem/sdk/chatroom"
 	"github.com/sbgayhub/golem/sdk/contact"
 )
@@ -25,19 +30,77 @@ var instance ability
 func init() {
 	instance = ability{api: chatroomapi.Get(), cache: map[string]map[string]*sdk.Member{}}
 	sdk.Instance = &instance
-	if err := instance.loadCache(); err != nil {
-		slog.Warn("[chatroom ability] 加载失败")
-	}
 }
 
 func Initial() {
 	// 从文件加载数据
+	if file, err := os.ReadFile(filepath.Join("data", "chatroom.json")); err == nil {
+		if err := json.Unmarshal(file, &instance.cache); err != nil {
+			slog.Warn("[chatroom ability] 反序列化群组信息失败")
+			return
+		}
+		slog.Info("[chatroom ability] 从文件加载群组信息成功", "count", len(instance.cache))
+		return
+	}
 
 	// 从api获取数据
+	stream.Of(contact.Instance.List()...).
+		Filter(func(item *contact.Contact) bool { return item.Type == contact.ContactType_CONTACT_TYPE_GROUP }).
+		ForEach(func(item *contact.Contact) {
+			if chatroom, err := contactapi.Get().Detail([]string{item.Username}); err != nil {
+				slog.Warn("[chatroom ability] 获取群组信息失败", "chatroom", item.Nickname, "err", err)
+				return
+			} else {
+				for _, info := range chatroom.ContactList[0].Members.List {
+					cache := maputil.GetOrSet(instance.cache, item.Username, map[string]*sdk.Member{})
+					cache[info.GetUsername()] = &sdk.Member{
+						Username:        info.GetUsername(),
+						Nickname:        info.GetNickname(),
+						DisplayName:     info.GetDisplayName(),
+						Avatar:          info.GetSmallAvatarUrl(),
+						Flag:            info.GetChatroomMemberFlag(),
+						InviterUsername: info.GetInviterUsername(),
+					}
+				}
+			}
+			slog.Info("[chatroom ability] 群成员获取成功", "chatroom", item.Nickname, "count", len(instance.cache[item.Username]))
+		})
+	Destroy()
 }
 
 func Destroy() {
-	// 保存数据到文件
+	marshal, err := json.Marshal(instance.cache)
+	if err != nil {
+		slog.Warn("[chatroom ability] 序列化群组信息失败", "err", err)
+		return
+	}
+	if err := os.WriteFile(filepath.Join("data", "chatroom.json"), marshal, 0755); err != nil {
+		slog.Warn("[chatroom ability] 保存群组信息失败", "err", err)
+		return
+	}
+}
+
+func Refresh(name string) error {
+	// 清除缓存
+	instance.cache[name] = map[string]*sdk.Member{}
+	// 从api获取数据
+	if chatroom, err := contactapi.Get().Detail([]string{name}); err != nil {
+		return fmt.Errorf("[chatroom ability] 获取群组 [%s] 信息失败: %w", name, err)
+	} else {
+		for _, info := range chatroom.ContactList[0].Members.List {
+			instance.cache[name][info.GetUsername()] = &sdk.Member{
+				Username:        info.GetUsername(),
+				Nickname:        info.GetNickname(),
+				DisplayName:     info.GetDisplayName(),
+				Avatar:          info.GetSmallAvatarUrl(),
+				Flag:            info.GetChatroomMemberFlag(),
+				InviterUsername: info.GetInviterUsername(),
+			}
+		}
+	}
+	slog.Info("[chatroom ability] 群成员获取成功", "chatroom", name, "count", len(instance.cache[name]))
+	Destroy()
+	return nil
 }
 
 func (a *ability) loadCache() error {
