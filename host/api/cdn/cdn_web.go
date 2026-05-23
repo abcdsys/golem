@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/sbgayhub/golem/host/api"
 )
 
 // web CDN 服务 web 实现（通过 HTTP 调用远程服务）
