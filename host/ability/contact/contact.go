@@ -31,7 +31,7 @@ func Initial() {
 	// 从文件读取联系人信息
 	if file, err := os.ReadFile(filepath.Join("data", "contact.json")); err == nil {
 		if err := json.Unmarshal(file, &instance.cache); err != nil {
-			slog.Warn("[contact ability] 反序列化联系人信息失败")
+			slog.Warn("[contact ability] 反序列化联系人信息失败", "err", err)
 			return
 		}
 		slog.Info("[contact ability] 从文件加载联系人信息成功", "count", len(instance.cache))
