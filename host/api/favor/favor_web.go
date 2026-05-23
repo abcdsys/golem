@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"sync"
+
+	"github.com/sbgayhub/golem/host/api"
 )
 
 // web 收藏服务 web 实现（通过 HTTP 调用远程服务）
