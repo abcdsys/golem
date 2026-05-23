@@ -11,7 +11,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 
 	"github.com/sbgayhub/golem/host/config"
@@ -75,15 +74,11 @@ func (r *Request) Query(args ...any) *Request {
 }
 
 func (r *Request) Path(path string) *Request {
-	if strings.HasSuffix(r.uri, "/") {
-		r.uri = r.uri + path
-	} else {
-		r.uri = r.uri + "/" + path
-	}
+	r.uri = fmt.Sprintf(r.uri, path)
 	return r
 }
 
-func (r *Request) Body(body map[string]any) *Request {
+func (r *Request) Body(body any) *Request {
 	if marshal, err := json.Marshal(body); err != nil {
 		slog.Error("[http] 序列化body出现错误", "err", err)
 		r.body = bytes.NewReader([]byte("{}"))
