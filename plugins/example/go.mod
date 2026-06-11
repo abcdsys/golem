@@ -1,3 +1,3 @@
-module golem_plugin_exampple
+module golem_plugin_example
 
 go 1.25.0
