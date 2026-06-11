@@ -7,6 +7,11 @@ import (
 	_ "github.com/sbgayhub/golem/host/ability/favor"
 	_ "github.com/sbgayhub/golem/host/ability/label"
 	_ "github.com/sbgayhub/golem/host/ability/message"
+	_ "github.com/sbgayhub/golem/host/ability/moments"
+	_ "github.com/sbgayhub/golem/host/ability/official"
+	_ "github.com/sbgayhub/golem/host/ability/payment"
+	_ "github.com/sbgayhub/golem/host/ability/report"
+	_ "github.com/sbgayhub/golem/host/ability/user"
 )
 
 import contactability "github.com/sbgayhub/golem/host/ability/contact"

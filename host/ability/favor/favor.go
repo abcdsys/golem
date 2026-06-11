@@ -4,7 +4,6 @@ package favorability
 import (
 	sdk "github.com/sbgayhub/golem/sdk/favor"
 
-	"github.com/sbgayhub/golem/host/api"
 	favorapi "github.com/sbgayhub/golem/host/api/favor"
 )
 
@@ -23,11 +22,13 @@ func (a ability) GetInfo() (*sdk.GetInfo_Info, error) {
 	if resp == nil || err != nil {
 		return nil, err
 	}
-	var result sdk.GetInfo_Info
-	if err := api.TransformProto(resp, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	return &sdk.GetInfo_Info{
+		UsedSize:        resp.GetUsedSize(),
+		TotalSize:       resp.GetTotalSize(),
+		MaxFileSize:     resp.GetMaxFileSize(),
+		MaxAutoUpload:   resp.GetMaxAutoUploadSize(),
+		MaxAutoDownload: resp.GetMaxAutoDownloadSize(),
+	}, nil
 }
 
 // GetItem 获取收藏项详情
@@ -38,11 +39,7 @@ func (a ability) GetItem(favId int32) ([]*sdk.Item, error) {
 	}
 	items := make([]*sdk.Item, 0, len(resp.Items))
 	for _, item := range resp.Items {
-		var sdkItem sdk.Item
-		if err := api.TransformProto(item, &sdkItem); err != nil {
-			return nil, err
-		}
-		items = append(items, &sdkItem)
+		items = append(items, mapItem(item))
 	}
 	return items, nil
 }
@@ -53,14 +50,6 @@ func (a ability) Delete(favId int32) error {
 	if resp == nil || err != nil {
 		return err
 	}
-	results := make([]*sdk.Delete_Result, 0, len(resp.Results))
-	for _, r := range resp.Results {
-		var sdkResult sdk.Delete_Result
-		if err := api.TransformProto(r, &sdkResult); err != nil {
-			return err
-		}
-		results = append(results, &sdkResult)
-	}
 	return nil
 }
 
@@ -70,9 +59,37 @@ func (a ability) Sync(key []byte) (*sdk.Sync_Response, error) {
 	if resp == nil || err != nil {
 		return nil, err
 	}
-	var result sdk.Sync_Response
-	if err := api.TransformProto(resp, &result); err != nil {
-		return nil, err
+	result := sdk.Sync_Response{
+		Items:   make([]*sdk.Item, 0, len(resp.Items)),
+		Key:     resp.GetKey(),
+		HasMore: resp.GetHasMore(),
+	}
+	for _, item := range resp.Items {
+		result.Items = append(result.Items, mapSyncItem(item))
 	}
 	return &result, nil
+}
+
+func mapItem(item *favorapi.FavorItem) *sdk.Item {
+	if item == nil {
+		return nil
+	}
+	return &sdk.Item{
+		Id:         item.GetId(),
+		Status:     item.GetStatus(),
+		Object:     item.GetObject(),
+		Flag:       item.GetFlag(),
+		UpdateTime: item.GetUpdateTime(),
+		UpdateSeq:  item.GetUpdateSequence(),
+	}
+}
+
+func mapSyncItem(item *favorapi.SyncFavorItem) *sdk.Item {
+	if item == nil {
+		return nil
+	}
+	return &sdk.Item{
+		Id:     item.GetType(),
+		Object: item.GetObject(),
+	}
 }

@@ -2,7 +2,6 @@
 package labelability
 
 import (
-	"github.com/sbgayhub/golem/host/api"
 	sdk "github.com/sbgayhub/golem/sdk/label"
 
 	labelapi "github.com/sbgayhub/golem/host/api/label"
@@ -25,11 +24,7 @@ func (a ability) List() ([]*sdk.LabelPair, error) {
 	}
 	labels := make([]*sdk.LabelPair, 0, len(resp.List))
 	for _, l := range resp.List {
-		var pair sdk.LabelPair
-		if err := api.TransformProto(l, &pair); err != nil {
-			return nil, err
-		}
-		labels = append(labels, &pair)
+		labels = append(labels, mapPair(l))
 	}
 	return labels, nil
 }
@@ -40,13 +35,10 @@ func (a ability) Add(name string) (*sdk.LabelPair, error) {
 	if resp == nil || err != nil {
 		return nil, err
 	}
-	var pair sdk.LabelPair
 	if resp.List != nil {
-		if err := api.TransformProto(resp.List, &pair); err != nil {
-			return nil, err
-		}
+		return mapPair(resp.List), nil
 	}
-	return &pair, nil
+	return &sdk.LabelPair{}, nil
 }
 
 // Delete 删除标签
@@ -55,11 +47,10 @@ func (a ability) Delete(labelIds string) (*sdk.Delete_Response, error) {
 	if resp == nil || err != nil {
 		return nil, err
 	}
-	var result sdk.Delete_Response
-	if err := api.TransformProto(resp, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	return &sdk.Delete_Response{
+		Code:    resp.GetBaseResponse().GetCode(),
+		Message: resp.GetBaseResponse().GetMessage().GetValue(),
+	}, nil
 }
 
 // Update 更新标签名称
@@ -68,11 +59,10 @@ func (a ability) Update(labelId uint32, name string) (*sdk.Update_Response, erro
 	if resp == nil || err != nil {
 		return nil, err
 	}
-	var result sdk.Update_Response
-	if err := api.TransformProto(resp, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	return &sdk.Update_Response{
+		Code:    resp.GetBaseResponse().GetCode(),
+		Message: resp.GetBaseResponse().GetMessage().GetValue(),
+	}, nil
 }
 
 // ModifyContactLabels 修改联系人标签
@@ -81,9 +71,18 @@ func (a ability) ModifyContactLabels(usernames []string, labelIds string) (*sdk.
 	if resp == nil || err != nil {
 		return nil, err
 	}
-	var result sdk.ModifyContact_Response
-	if err := api.TransformProto(resp, &result); err != nil {
-		return nil, err
+	return &sdk.ModifyContact_Response{
+		Code:    resp.GetBaseResponse().GetCode(),
+		Message: resp.GetBaseResponse().GetMessage().GetValue(),
+	}, nil
+}
+
+func mapPair(pair *labelapi.Pair) *sdk.LabelPair {
+	if pair == nil {
+		return nil
 	}
-	return &result, nil
+	return &sdk.LabelPair{
+		Id:   pair.GetId(),
+		Name: pair.GetName(),
+	}
 }

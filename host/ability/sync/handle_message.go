@@ -13,13 +13,18 @@ import (
 )
 
 func handleMessage(messages []*messageapi.NewMessage) {
+	if !messageability.OutboundReady() {
+		slog.Warn("基础数据初始化中，跳过新消息处理", "count", len(messages))
+		return
+	}
+
 	for _, msg := range messages {
 		if data, err := messageability.Build(msg); err != nil {
 			slog.Error("构建消息失败", "err", err)
 		} else {
 			log(data)
 
-			if msg, ok := plugin.HandleCommand(data.GetContent(), data.GetSender()); ok {
+			if msg, ok := plugin.HandleCommand(data.GetContent(), data.GetSender(), data.GetMember()); ok {
 				if _, err := messagesdk.Instance.Send(msg); err != nil {
 					slog.Warn("命令回复失败", "receiver", data.GetSender().GetUsername(), "err", err)
 				}
