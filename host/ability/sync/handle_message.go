@@ -25,8 +25,10 @@ func handleMessage(messages []*messageapi.NewMessage) {
 			log(data)
 
 			if msg, ok := plugin.HandleCommand(data.GetContent(), data.GetSender(), data.GetMember()); ok {
-				if _, err := messagesdk.Instance.Send(msg); err != nil {
-					slog.Warn("命令回复失败", "receiver", data.GetSender().GetUsername(), "err", err)
+				if msg.Content != "" {
+					if _, err := messagesdk.Instance.Send(msg); err != nil {
+						slog.Warn("命令回复失败", "receiver", data.GetSender().GetUsername(), "err", err)
+					}
 				}
 				continue
 			}
