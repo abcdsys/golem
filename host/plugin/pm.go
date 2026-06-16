@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/duke-git/lancet/v2/strutil"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/sbgayhub/golem/sdk/contact"
+	"github.com/sbgayhub/golem/sdk/message"
 	sdk "github.com/sbgayhub/golem/sdk/plugin"
 )
 
@@ -43,7 +47,8 @@ type pmDisableCommand struct {
 }
 
 type pmListCommand struct {
-	_ struct{} `cmd:"pm list" help:"列出已加载插件" usage:"/pm list" example:"/pm list"`
+	_       struct{} `cmd:"pm list" help:"列出已加载插件" usage:"/pm list" example:"/pm list"`
+	Command *sdk.Command
 }
 
 type pmInfoCommand struct {
@@ -81,8 +86,7 @@ func registerBuiltinPM() error {
 		commandSchemas: pm.GetCommandSchemas(),
 		types:          []string{"command", "builtin"},
 	}
-	cp := sdk.CommandPlugin(pm)
-	w.commandPlugin = &cp
+	w.commandPlugin = new(sdk.CommandPlugin(pm))
 
 	plugins = append(plugins, w)
 	sortPlugins()
@@ -161,22 +165,39 @@ func (p *pmCommandPlugin) disable(cmd pmDisableCommand) (string, error) {
 	return p.setEnabled(cmd.Name, cmd.Command, false)
 }
 
-func (p *pmCommandPlugin) list(_ pmListCommand) (string, error) {
+func (p *pmCommandPlugin) list(cmd pmListCommand) (string, error) {
 	items := pluginSnapshot()
 	if len(items) == 0 {
 		return "当前没有已加载插件", nil
 	}
 
-	lines := make([]string, 0, len(items)+1)
-	lines = append(lines, "已加载插件：")
+	temp := map[string]string{}
+	data := map[string]string{}
+
+	temp["title"] = fmt.Sprintf("插件列表 - 共 %d 插件", len(items))
+	temp["desc"] = fmt.Sprintf("共 %d 插件", len(items))
+
 	for _, item := range items {
 		state := "启用"
 		if item.Config != nil && !item.Config.Enable {
 			state = "禁用"
 		}
-		lines = append(lines, fmt.Sprintf("- %s [%s] priority=%d types=%s", item.Name, state, item.Metadata.Priority, strings.Join(item.types, ",")))
+
+		data[item.Name] = fmt.Sprintf("%s [%s]\n优先级: %d\n类型: %s\n描述: %s", item.Name, state, item.Metadata.Priority, strings.Join(item.types, ", "), item.Description)
 	}
-	return strings.Join(lines, "\n"), nil
+
+	message.Instance.Send(&message.Message{
+		Type:     message.TypeAppChatRecord,
+		Receiver: cmd.Command.Sender,
+		Content:  "插件列表",
+		Data: &message.Message_App{App: &message.AppData{
+			SubType: 19,
+			Title:   temp["title"],
+			Desc:    temp["desc"],
+			Xml:     buildRecord(temp, data),
+		}},
+	})
+	return "", nil
 }
 
 func (p *pmCommandPlugin) info(cmd pmInfoCommand) (string, error) {
@@ -385,4 +406,33 @@ func parsePMConfig(raw string) (map[string]any, error) {
 		return nil, fmt.Errorf("解析 TOML 配置失败: %w", err)
 	}
 	return value, nil
+}
+
+// 构建聊天记录xml
+func buildRecord(desc map[string]string, data map[string]string) string {
+	self := contact.Instance.GetSelf()
+	outter := `<appmsg appid="" sdkver="0">
+<title>{title}</title>
+<des>{desc}</des><action>view</action><type>19</type><url/><recorditem><![CDATA[<recordinfo>
+<title>{title}</title>
+<desc>{desc}</desc>
+<datalist count="{count}">{data}</datalist>
+</recordinfo>]]></recorditem></appmsg>`
+
+	desc["count"] = strconv.Itoa(len(data))
+	template := `<dataitem datatype="1" dataid="" htmlid="">
+<sourcename>%s</sourcename>
+<datadesc>%s</datadesc>
+<sourceheadurl>%s</sourceheadurl>
+<sourcetime>%s</sourcetime>
+<srcMsgLocalid></srcMsgLocalid>
+<srcMsgCreateTime>%d</srcMsgCreateTime>
+</dataitem>`
+	var inner strings.Builder
+	for title, data := range data {
+		inner.WriteString(fmt.Sprintf(template, title, data, self.Avatar, time.Now().Format(time.DateTime), time.Now().Unix()))
+	}
+	desc["data"] = inner.String()
+
+	return strutil.TemplateReplace(outter, desc)
 }
