@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/evanphx/go-hclog-slog/hclogslog"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"github.com/phsym/console-slog"
@@ -26,7 +25,8 @@ func Start(p Plugin) {
 		Level:      hclog.Debug,
 		JSONFormat: true,
 	})
-	slog.SetDefault(slog.New(hclogslog.Adapt(clientLogger)))
+
+	slog.SetDefault(slog.New(Adapt(clientLogger)))
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig:  handshakeConfig,
 		TLSProvider:      nil,
