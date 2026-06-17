@@ -743,6 +743,133 @@ func (p *MyPlugin) OnUnload() error {
 
 ---
 
+## 🎮 系统内置命令
+
+系统提供了两组内置命令用于管理插件和联系人缓存。
+
+### ⚠️ 重要安全说明
+
+**Owner（机器人管理员）配置**：
+
+- **未配置 Owner 时**：所有人都可以执行系统命令，存在 `/pm info` 查看插件配置泄露敏感信息（如 API Key）的风险
+- **配置 Owner 后**：只有 Owner 可以执行系统命令，确保安全
+
+**配置方式**（在 `host/data/config.toml` 中）：
+
+```toml
+# 推荐：使用 username（微信 ID）
+owner = "wxid_xxx"
+
+# 支持多种匹配策略
+owner = "nickname::张三"      # 按昵称匹配
+owner = "username::wxid_xxx"  # 明确按 username 匹配
+owner = "remark::管理员"       # 按备注匹配
+
+# 无权限提示（可选，未配置时使用默认提示）
+forbidden = "无权限执行此操作"
+```
+
+**强烈建议**：在生产环境中务必配置 Owner，避免敏感信息泄露！
+
+---
+
+**命令帮助输出**：所有命令的帮助信息（使用 `/help` 或错误的命令参数时）会根据环境自动选择输出格式：
+- 如果存在 `gg` 插件（提供了 `text.to.image` 能力），帮助信息会以**图片**形式返回
+- 如果没有该能力，帮助信息会以**纯文本**形式返回
+
+---
+
+### /pm - 插件管理命令
+
+用于管理插件的加载、卸载、重载和配置。
+
+```bash
+# 列出所有插件
+/pm list
+
+# 加载插件
+/pm load <plugin_name>
+/pm load ai
+
+# 卸载插件
+/pm unload <plugin_name>
+/pm unload ai
+
+# 重载插件（热更新）
+/pm reload <plugin_name>
+/pm reload ai
+
+# 启用插件
+/pm enable <plugin_name>
+/pm enable ai              # 全局启用
+# 在群聊中执行会启用该插件在当前群聊中的功能
+
+# 禁用插件
+/pm disable <plugin_name>
+/pm disable ai             # 全局禁用
+# 在群聊中执行会禁用该插件在当前群聊中的功能
+
+# 查看插件详细信息
+/pm info <plugin_name>
+/pm info ai
+
+# 修改插件运行配置
+/pm set <plugin_name> [-p priority] [-a true|false] [-n true|false] [-c config]
+/pm set example -p 10                    # 修改优先级
+/pm set example -a true -n false         # 修改 AlwaysRun 和 Next
+/pm set example -c "name='张三'\nage=18" # 修改插件配置（TOML 格式）
+```
+
+**使用场景**：
+- 插件代码更新后使用 `/pm reload` 热更新
+- 临时禁用某个插件使用 `/pm disable`
+- 在特定群聊中禁用插件使用 `/pm disable`（在群聊中执行）
+- 查看所有插件状态使用 `/pm list`
+- 动态修改插件优先级、配置等使用 `/pm set`
+
+**注意事项**：
+- 重载插件会触发 `OnUnload()` 和 `OnLoad()` 生命周期回调
+- `/pm enable` 和 `/pm disable` 在群聊中执行时，只影响当前群聊
+- `/pm set` 可以动态修改插件的元数据和配置
+- 内置插件（pm、cm）不能被修改或禁用
+
+---
+
+### /cm - 联系人缓存管理命令
+
+用于刷新联系人和群成员的缓存数据。
+
+```bash
+# 刷新所有联系人缓存
+/cm contact
+
+# 刷新指定联系人缓存
+/cm contact <key>
+/cm contact wxid_xxx           # 按 username 刷新
+/cm contact username::wxid_xxx # 明确指定按 username
+/cm contact nickname::张三      # 按昵称刷新
+/cm contact remark::老王        # 按备注刷新
+
+# 刷新当前群所有成员缓存（仅在群聊中使用）
+/cm chatroom
+
+# 刷新当前群指定成员缓存（仅在群聊中使用）
+/cm chatroom <username>
+/cm chatroom wxid_xxx
+```
+
+**使用场景**：
+- 联系人信息更新后（改名、改备注等）刷新缓存
+- 群成员变动后刷新群成员缓存
+- 插件获取联系人信息不准确时手动刷新
+
+**注意事项**：
+- `/cm chatroom` 命令只能在群聊中使用
+- 刷新缓存会从微信服务器重新拉取最新数据
+- 支持使用 `username::`、`nickname::`、`remark::` 前缀精确匹配
+
+---
+
 ## ❓ 常见问题
 
 ### Q: 插件修改后如何热更新？
