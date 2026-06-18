@@ -3,10 +3,10 @@
 version: '3'
 
 vars:
-  # 为空时输出到插件目录；非空时输出到仓库根目录下的指定目录。
-  DIR: 'host/plugins'
-  PLUGINS: [ai, cron, gg, news, reread, statistics, universal, meme, video_parser]
-  PROJECT_DIR: '{{joinPath .TASKFILE_DIR ".."}}'
+  OS: 'windows' # 构建目标系统
+  ARCH: "amd64" # 构建目标架构
+  DIR: 'host/plugins' # 为空时输出到插件目录；非空时输出到仓库根目录下的指定目录。
+  PLUGINS: [ ai, cron, gg, news, reread, statistics, universal, meme, video_parser ]
 
 tasks:
   build:*:
@@ -37,15 +37,18 @@ tasks:
             ref: .PLUGINS
     vars:
       CUSTOM_DIR: '{{.DIR | default ""}}'
+      PROJECT_DIR: '{{joinPath .TASKFILE_DIR ".."}}'
       OUT_DIR: '{{if .CUSTOM_DIR}}{{joinPath .PROJECT_DIR .CUSTOM_DIR}}{{else}}{{joinPath .TASKFILE_DIR .PLUGIN}}{{end}}'
       OUT_FILE: '{{joinPath .OUT_DIR (printf "golem_plugin_%s%s" .PLUGIN exeExt)}}'
       PLUGIN_DIR: '{{joinPath .TASKFILE_DIR .PLUGIN}}'
     cmds:
       - cmd: echo "正在拉取插件 {{.PLUGIN}} 的依赖..."
         silent: true
-      - go mod download -C "{{.PLUGIN_DIR}}"
+      - cmd: go mod download -C "{{.PLUGIN_DIR}}"
+        silent: true
       - cmd: echo "正在构建插件 {{.PLUGIN}}..."
         silent: true
-      - go build -C "{{.PLUGIN_DIR}}" -o "{{.OUT_FILE}}" .
+      - cmd: GOOS={{OS}} GOARCH={{ARCH}} go build -C "{{.PLUGIN_DIR}}" -ldflags "-s -w" -o "{{.OUT_FILE}}" .
+        silent: true
       - cmd: echo "插件 {{.PLUGIN}} 构建完成：{{.OUT_FILE}}"
         silent: true
