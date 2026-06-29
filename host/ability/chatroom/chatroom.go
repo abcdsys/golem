@@ -84,16 +84,16 @@ func Refresh(name string) error {
 	// 清除缓存
 	instance.cache[name] = map[string]*sdk.Member{}
 	// 从api获取数据
-	if chatroom, err := contactapi.Get().Detail([]string{name}); err != nil {
+	if chatroom, err := chatroomapi.Get().ListMembers(name); err != nil {
 		return fmt.Errorf("[chatroom ability] 获取群组 [%s] 信息失败: %w", name, err)
 	} else {
-		for _, info := range chatroom.ContactList[0].Members.List {
+		for _, info := range chatroom.Result.List {
 			instance.cache[name][info.GetUsername()] = &sdk.Member{
 				Username:        info.GetUsername(),
 				Nickname:        info.GetNickname(),
 				DisplayName:     info.GetDisplayName(),
 				Avatar:          info.GetSmallAvatarUrl(),
-				Flag:            info.GetChatroomMemberFlag(),
+				Flag:            info.GetFlag(),
 				InviterUsername: info.GetInviterUsername(),
 			}
 		}
@@ -374,6 +374,33 @@ func (a *ability) GetMember(chatroom string, name string) *sdk.Member {
 func (a *ability) GetMembersDetail(chatroom string, members []string) []*sdk.Member {
 	//TODO implement me
 	panic("implement me")
+}
+
+// Members 返回指定群的成员缓存（供同步层清理使用）。
+func (a *ability) Members(chatroom string) map[string]*sdk.Member {
+	return a.cache[chatroom]
+}
+
+// DeleteMember 从群缓存中删除指定成员。
+func (a *ability) DeleteMember(chatroom, username string) {
+	if members, ok := a.cache[chatroom]; ok {
+		delete(members, username)
+	}
+}
+
+// HasChatroom 判断缓存中是否存在该群。
+func (a *ability) HasChatroom(chatroom string) bool {
+	_, ok := a.cache[chatroom]
+	return ok
+}
+
+// ChatroomKeys 返回所有群的 key 列表。
+func (a *ability) ChatroomKeys() []string {
+	keys := make([]string, 0, len(a.cache))
+	for k := range a.cache {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 //

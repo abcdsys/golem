@@ -170,6 +170,19 @@ func (a *ability) Get(key string) *sdk.Contact {
 	return nil
 }
 
+// // Delete 从缓存中删除指定联系人。
+//
+//	func (a *ability) Delete(username string) {
+//		delete(a.cache, username)
+//	}
+//
+// // Has 判断缓存中是否存在指定联系人。
+//
+//	func (a *ability) Has(username string) bool {
+//		_, ok := a.cache[username]
+//		return ok
+//	}
+//
 // List 获取联系人列表
 func (a *ability) List() []*sdk.Contact {
 	var result []*sdk.Contact
