@@ -33,6 +33,10 @@ func handleMessage(messages []*messageapi.NewMessage) {
 				continue
 			}
 
+			if data.Content == "无法显示此消息，你目前使用的微信版本暂时不支持此类型的信息。" {
+				continue
+			}
+
 			plugin.Publish(&pluginsdk.Event{
 				Topic:  data.GetType().GetTopic(),
 				Sender: data.GetSender().GetUsername(),
