@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/duke-git/lancet/v2/maputil"
 	"github.com/duke-git/lancet/v2/stream"
@@ -339,8 +341,8 @@ func (a *ability) ConsentJoin(inviteURL string) (*sdk.ConsentJoin_Response, erro
 }
 
 func (a *ability) ListMembers(chatroom string) []*sdk.Member {
-	//TODO implement me
-	panic("implement me")
+	cache := maputil.GetOrSet(a.cache, chatroom, map[string]*sdk.Member{}) // 获取群组缓存
+	return slices.Collect(maps.Values(cache))
 }
 
 func (a *ability) GetMember(chatroom string, name string) *sdk.Member {
