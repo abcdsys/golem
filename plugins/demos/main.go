@@ -74,6 +74,6 @@ func main() {
 		"demos": p.handleExplain,
 	}
 
-	slog.Debug("[demos] 娱乐插件启动中...")
+	slog.Info("[demos] 娱乐插件启动中...")
 	plugin.Start(p)
 }

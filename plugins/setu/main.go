@@ -23,6 +23,6 @@ func main() {
 		},
 		client: newHTTPClient(),
 	}
-	slog.Debug("[setu] 色图插件启动中...")
+	slog.Info("[setu] 色图插件启动中...")
 	plugin.Start(p)
 }

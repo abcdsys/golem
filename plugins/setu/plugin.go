@@ -57,7 +57,7 @@ func (p *SetuPlugin) GetMetadata() *plugin.Metadata {
 }
 
 func (p *SetuPlugin) OnLoad() error {
-	slog.Debug("[setu] 色图插件加载成功",
+	slog.Info("[setu] 色图插件加载成功",
 		"img_url", p.Config.ImgURL,
 		"video_rate", p.Config.VideoRate,
 	)
@@ -65,7 +65,7 @@ func (p *SetuPlugin) OnLoad() error {
 }
 
 func (p *SetuPlugin) OnUnload() error {
-	slog.Debug("[setu] 色图插件已卸载")
+	slog.Info("[setu] 色图插件已卸载")
 	return nil
 }
 

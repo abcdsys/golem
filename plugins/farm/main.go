@@ -17,6 +17,6 @@ func main() {
 			},
 		},
 	}
-	slog.Debug("[farm] 农场插件启动中...")
+	slog.Info("[farm] 农场插件启动中...")
 	plugin.Start(p)
 }

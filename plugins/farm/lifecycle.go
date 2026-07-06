@@ -45,7 +45,7 @@ func (p *FarmPlugin) OnLoad() error {
 	p.groupData = make(map[string]map[string]*FarmPlayer)
 	p.random = rand.New(rand.NewSource(time.Now().UnixNano()))
 	p.loadData()
-	slog.Debug("[farm] 农场插件加载成功", "data_file", p.Config.DataFile, "image_dir", p.Config.ImageDir)
+	slog.Info("[farm] 农场插件加载成功", "data_file", p.Config.DataFile, "image_dir", p.Config.ImageDir)
 	return nil
 }
 
@@ -54,7 +54,7 @@ func (p *FarmPlugin) OnUnload() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	_ = p.saveDataLocked()
-	slog.Debug("[farm] 农场插件已卸载")
+	slog.Info("[farm] 农场插件已卸载")
 	return nil
 }
 

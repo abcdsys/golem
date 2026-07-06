@@ -13,7 +13,7 @@ func (p *FarmPlugin) loadData() {
 
 	path := p.Config.DataFile
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		slog.Debug("[farm] 无历史数据，开始新游戏")
+		slog.Info("[farm] 无历史数据，开始新游戏")
 		return
 	}
 	data, err := os.ReadFile(path)
@@ -32,7 +32,7 @@ func (p *FarmPlugin) loadData() {
 	if loaded != nil {
 		p.groupData = loaded
 	}
-	slog.Debug("[farm] 加载数据成功", "groups", len(p.groupData))
+	slog.Info("[farm] 加载数据成功", "groups", len(p.groupData))
 }
 
 func (p *FarmPlugin) saveData() error {

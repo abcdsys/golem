@@ -38,12 +38,12 @@ func (p *DemosPlugin) GetMetadata() *plugin.Metadata {
 }
 
 func (p *DemosPlugin) OnLoad() error {
-	slog.Debug("[demos] 插件加载成功", "video_native", p.Config.VideoNative, "max_list", p.Config.MaxList)
+	slog.Info("[demos] 插件加载成功", "video_native", p.Config.VideoNative, "max_list", p.Config.MaxList)
 	return nil
 }
 
 func (p *DemosPlugin) OnUnload() error {
-	slog.Debug("[demos] 插件已卸载")
+	slog.Info("[demos] 插件已卸载")
 	return nil
 }
 
