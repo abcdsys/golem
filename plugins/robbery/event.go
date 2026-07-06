@@ -18,8 +18,6 @@ func (p *RobberyPlugin) GetSubscriptions() []string {
 
 // OnEvent 事件处理入口
 func (p *RobberyPlugin) OnEvent(e *plugin.Event) (bool, error) {
-	p.ensureDefaults()
-
 	em, ok := e.Payload.(*plugin.Event_Message)
 	if !ok || em.Message == nil {
 		return false, nil

@@ -47,31 +47,6 @@ func (p *RobberyPlugin) GetMetadata() *plugin.Metadata {
 	}
 }
 
-// ensureDefaults 确保配置不为空（配置文件可能覆盖默认值）
-func (p *RobberyPlugin) ensureDefaults() {
-	if p.Config.DataFile == "" {
-		p.Config.DataFile = "data/robbery_game.json"
-	}
-	if p.Config.InitialMoney == 0 {
-		p.Config.InitialMoney = 100
-	}
-	if p.Config.InitialStrength == 0 {
-		p.Config.InitialStrength = 15
-	}
-	if p.Config.JobRefreshHours == 0 {
-		p.Config.JobRefreshHours = 24
-	}
-	if p.Config.WelfareAmount == 0 {
-		p.Config.WelfareAmount = 50
-	}
-	if p.Config.WelfareCooldown == 0 {
-		p.Config.WelfareCooldown = 24
-	}
-	if p.Config.ChangeProfCost == 0 {
-		p.Config.ChangeProfCost = 500
-	}
-}
-
 // 游戏常量
 const (
 	baseWantedChance   = 0.2 // 基础通缉概率

@@ -4,8 +4,6 @@ import "log/slog"
 
 // OnLoad 插件加载时调用
 func (p *RobberyPlugin) OnLoad() error {
-	p.ensureDefaults()
-
 	// 初始化内部状态
 	p.data = make(map[string]map[string]*PlayerData)
 
