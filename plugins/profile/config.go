@@ -1,6 +1,6 @@
 package main
 
-// 人物画像相关参数的默认值（也可经 plugins/config.toml 的 [statistics.config] 覆盖）
+// 人物画像相关参数的默认值（也可经 plugins/config.toml 的 [profile.config] 覆盖）
 const (
 	defaultChunkTokenBudget     = 4000 // 每块消息 token 估算上限；中文模型可上调到 6000
 	defaultMaxSingleMsgChars    = 2000 // 单条消息硬截断长度
@@ -8,7 +8,7 @@ const (
 	defaultColdStartMaxChunks   = 30   // 冷启动最多分块数（安全天花板）
 )
 
-// Config 插件配置（经 plugins/config.toml 的 [statistics.config] 注入）
+// Config 插件配置（经 plugins/config.toml 的 [profile.config] 注入）
 type Config struct {
 	// ChunkTokenBudget 每块消息的 token 估算上限，按内容量切块而非条数。默认 4000；中文模型可调大到 6000
 	ChunkTokenBudget int `toml:"chunk_token_budget" comment:"每块消息的 token 估算上限，按内容量切块而非条数。默认 4000；中文模型可调大到 6000"`

@@ -10,7 +10,7 @@ import (
 
 // parseTrigger 解析「人物画像」类触发语。
 //
-// 触发形式（避免误吞与 AI 的闲聊，同时兼容群聊 @ 提人）：
+// 触发形式：
 //  1. 单输「人物画像」
 //  2. 「人物画像」+ 空白 + 成员名 / 开关（如「人物画像 张三」「人物画像 --global」）
 //  3. 「人物画像」+ @ + 成员名（如「人物画像@张三」，群聊 @ 提人常不带空格）
@@ -37,7 +37,6 @@ func parseTrigger(msg *message.Message) (name string, global, rebuild, triggered
 	}
 
 	// 形式 2 / 3：前缀后必须紧跟「任意空白」或「@」，否则不触发
-	// （兼容微信插入的 NBSP / U+2005 等非常规空格，以及全角 @）
 	first, _ := utf8.DecodeRuneInString(rest)
 	if !isAtSign(first) && !unicode.IsSpace(first) {
 		return "", false, false, false

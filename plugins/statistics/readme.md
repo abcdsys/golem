@@ -1,6 +1,6 @@
 # Statistics 插件
 
-消息统计 + 群成员人物画像插件：自动记录群聊消息、提供发言排行和详情查询，并支持基于历史发言生成「人物画像」。
+消息统计插件：自动记录群聊消息、提供发言排行和详情查询；并暴露 `statistics.query_messages` 能力供其它插件查询历史发言。
 
 ## 功能特性
 
@@ -8,11 +8,10 @@
 - **发言排行**：支持查看今日、昨日、本周、本月和总排行榜
 - **详细统计**：按消息类型统计（文本、图片、语音、视频等）
 - **个人详情**：查询指定成员的详细发言数据
-- **人物画像**：发「人物画像 <昵称>」基于历史发言生成/更新成员画像（复用 `ai` 插件的 `ai.chat` 能力）
-- **三个数据库**：
+- **能力暴露**：提供 `statistics.query_messages` 跨插件能力，供 `profile` 等插件查询成员历史发言
+- **双数据库**：
   - `analysis.db`：存储聚合统计数据，快速查询排行
-  - `statistics.db`：存储完整消息记录
-  - `profile.db`：存储人物画像（`profiles` 表），与消息库分离互不影响
+  - `statistics.db`：存储完整消息记录，支持详细分析
 - **零配置运行**：开箱即用，无需任何配置
 
 ## 快速开始
@@ -35,66 +34,25 @@
 
 在群聊中发送 `发言详情` 即可查看自己的详细发言统计。
 
-## 人物画像
+## 能力：statistics.query_messages
 
-基于群成员的历史发言，调用大模型（经 `ai` 插件的 `ai.chat` 能力）生成/增量更新人物画像，并**渲染为图片**发送（经 `gg` 插件的 `text.to.image` 能力）。
-**依赖**：`ai` 插件（提供 LLM）；`gg` 插件（提供 `text.to.image`，把画像文本渲染成 PNG）；数据源为本插件记录的 `statistics.db`。若 `gg` 未启用，自动回退为纯文本发送。
+本插件暴露 `statistics.query_messages` 能力，供其它插件（如 `profile`）查询成员历史发言。
 
-### 触发形式
+**入参** `map[string]string`：
 
-| 消息 | 范围 | 说明 |
-|------|------|------|
-| `人物画像` | 群聊 | **查自己**（群内未指定成员时默认发起人自己） |
-| `人物画像` | 私聊 | 仅主人可用，查自己 |
-| `人物画像 张三` | 当前群 | 群内按昵称/群显示名/备注/wxid 匹配 |
-| `人物画像 @张三` | 当前群 | @ 提人，用 Reminds 里的 wxid 直接定位（最可靠） |
-| `人物画像@张三` | 当前群 | 同上（@ 直接跟，无空格也触发） |
-| `人物画像 张三 --global` | 跨群 | 全局画像（按联系人缓存匹配，多为好友） |
-| `人物画像 张三 --rebuild` | 当前群 | 忽略已有画像，从头冷启动 |
+| key | 必需 | 含义 |
+|---|---|---|
+| `member` | 是 | 成员 wxid |
+| `chatroom` | 否 | 群 wxid；空/缺省=跨群全局 |
+| `since_id` | 否 | 只取 id > since_id（增量水位线）；缺省=0 |
+| `limit` | 否 | >0 时取最近 limit 条并反转为时间正序；0=不限 |
 
-> 前缀「人物画像」后必须紧跟**空白**或**@**才触发（兼容微信 @ 提人插入的非常规空格如 NBSP）；
-> 形如「人物画像张三」「人物画像功能真不错」不触发，放行给 ai。
-
-### 权限
-
-| 场景 | 可查询范围 |
-|------|-----------|
-| 群聊 | 任意群成员均可触发，仅限当前群成员 |
-| 私聊 | **仅主人**可查（需配置 `Owner`） |
-| 主人画像 | 仅主人本人可查 |
-
-### 生成流程
-
-```
-记录该消息 → 解析触发语 + @ 的 wxid → 权限/范围判定 → 读历史发言
-   → 按 token 切块 → 每块调 ai.chat 产出「局部观察」 → 合并(已有画像+观察+量化指标) → 落库 profiles 表
+**返回**：`mime="json"`，JSON 数组（时间正序）：
+```json
+[{"id":123,"content":"...","timestamp":"2026-07-08 10:51:52"}, ...]
 ```
 
-- **增量水位线**：已生成过的画像只分析 `last_msg_id` 之后的新发言，省 token
-- **无新发言**：直接返回已有画像，不空跑 AI
-- **消息过多**：查询层只取最近 `2000` 条；切块层超 `30` 块时丢弃最早的、只保留最新 30 块
-- **画像维度**：性格与语言风格、兴趣话题、活跃时段、口头禅/表情习惯、与其他成员的关系
-
-### ⚠️ Token 用量提醒
-
-冷启动最费 token：最多 30 块 × 每块 ~4000 token + 一次合并 ≈ **12 万+ input tokens / 人**。
-建议冷启动用便宜模型（DeepSeek/Qwen 等，靠 `ai` 插件配置），冷启动后日常只做增量更新（通常 1 次调用），
-不要频繁 `--rebuild`。多人/多群会线性放大成本。
-
-### 配置（可选）
-
-插件零配置即可运行；如需调节画像参数，编辑 `plugins/config.toml` 的 `[statistics.config]` 段（首次运行由宿主自动生成默认值）：
-
-```toml
-[statistics.config]
-chunk_token_budget = 4000       # 每块 token 估算上限；中文模型可调大到 6000
-max_single_msg_chars = 2000     # 单条消息硬截断长度
-cold_start_max_messages = 2000  # 冷启动最多处理的消息条数
-cold_start_max_chunks = 30      # 冷启动最多分块数（超出丢弃最早的）
-render_image = true             # 画像是否渲染成图片发送（gg 插件 text.to.image）；false 发纯文本
-```
-
-留空（或值为 0）则回退到上列默认值。`render_image` 默认 `true`（渲染图片）；不想看图片时设为 `false` 即发纯文本，gg 未启用或渲染失败时也会自动回退文本。
+> timestamp 为本机本地时间（statistics 表存的就是本地时间）。仅返回 `type='文本'` 的消息。
 
 ## 使用说明
 
@@ -204,7 +162,6 @@ render_image = true             # 画像是否渲染成图片发送（gg 插件 
 数据库文件默认存储在插件所在目录：
 - `analysis.db`：聚合统计数据库
 - `statistics.db`：完整消息记录数据库
-- `profile.db`：人物画像数据库（`profiles` 表，独立于消息库）
 
 ### 数据库结构
 
@@ -232,18 +189,6 @@ CREATE TABLE statistics (
     member TEXT,                 -- 发送成员 ID
     raw TEXT NOT NULL,           -- 原始消息
     timestamp DATETIME           -- 发送时间
-);
-```
-
-#### profile.db - 画像表（独立库）
-```sql
-CREATE TABLE profiles (
-    chatroom  TEXT NOT NULL DEFAULT '',   -- 群 wxid；全局画像为空
-    member    TEXT NOT NULL,              -- 成员 wxid
-    profile   TEXT,                       -- 画像文本
-    last_msg_id INTEGER DEFAULT 0,        -- 增量水位线（已分析到的最后消息 ID）
-    updated_at DATETIME,                   -- 最近更新时间（本地时间）
-    PRIMARY KEY (chatroom, member)
 );
 ```
 
@@ -324,14 +269,14 @@ CREATE TABLE profiles (
 
 ```toml
 Priority = -1 << 31  # 最高优先级（最小值，最先执行）
-Next = false         # 处理后终止事件链
+Next = true          # 继续传递给下一个插件
 AlwaysRun = true     # 始终运行，即使其他插件已处理
 ```
 
 **特点**：
 - **最先执行**：优先级最高，在所有插件之前运行
-- **透明记录**：普通消息记录后返回 `handled=false`，事件链继续传给后续插件（如 ai），不影响其他插件
-- **消费触发**：排行关键词与「人物画像」触发返回 `handled=true`，终止事件链（避免 ai 重复回复）
+- **透明记录**：记录消息后返回 `handled=recorded`，`Next=true` 继续传给后续插件（如 ai），不影响其他插件
+- **排行消费**：排行关键词返回 `handled=true`，但因 `Next=true` 仍会传给后续插件（历史行为；如不希望 ai 对排行词回复可改 `Next=false`）
 - **全量统计**：`AlwaysRun=true` 保证会话被劫持时仍记录所有群聊消息
 
 ### 事件订阅
@@ -397,7 +342,7 @@ else:
 
 直接删除数据库文件即可：
 ```bash
-rm analysis.db statistics.db profile.db
+rm analysis.db statistics.db
 ```
 
 插件会在下次启动时自动重建数据库。

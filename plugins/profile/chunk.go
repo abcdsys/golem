@@ -34,12 +34,7 @@ func truncateMessage(content string, maxChars int) string {
 }
 
 // splitIntoChunks 按 token 估算预算切块，返回切块结果。
-// 规则：
-//   - 单条消息超 maxSingleChars 先截断，避免单块被一条撑爆；
-//   - 当前块累计 token 超过 budget 且块非空时，先发射当前块；
-//   - 返回的每个 chunk 是连续的消息切片。
-//
-// 注意：水位线（maxID）不在这里返回——采样/截断后必须基于「实际送入模型的块」
+// 水位线（maxID）不在这里返回——采样/截断后必须基于「实际送入模型的块」
 // 计算水位线，否则会虚报覆盖范围。由调用方用 maxChunkID 计算。
 func splitIntoChunks(msgs []historyMsg, budget, maxSingleChars int) [][]historyMsg {
 	var chunks [][]historyMsg
@@ -114,8 +109,6 @@ func maxChunkID(chunks [][]historyMsg) int64 {
 }
 
 // keepRecentChunks 块数超限时，只保留最新的 max 块，丢弃更早的块。
-// 画像代表「当前形象」，最新发言比早期发言更具代表性；且整体丢弃最早块比
-// 均匀采样（保留首尾、丢中间）语义更清晰，也不会让中间消息被永久跳过。
 func keepRecentChunks(chunks [][]historyMsg, max int) [][]historyMsg {
 	if len(chunks) <= max {
 		return chunks

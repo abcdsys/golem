@@ -4,48 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/sbgayhub/golem/sdk/chatroom"
 	"github.com/sbgayhub/golem/sdk/contact"
 	"github.com/sbgayhub/golem/sdk/message"
 )
-
-// aiChatPayload 与 ai 插件 ai.chat 能力约定的请求结构
-type aiChatPayload struct {
-	System   string        `json:"system"`
-	Messages []chatMessage `json:"messages"`
-}
-
-// chatMessage 发给 ai.chat 能力的消息结构（与 ai 插件的 openAIMessage 对应）
-type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-// historyMsg 从 statistics 表取出的单条历史发言
-type historyMsg struct {
-	ID        int64
-	Content   string
-	Timestamp string
-}
-
-// profileRecord 画像记录（持久化于 statistics.db 的 profiles 表）
-type profileRecord struct {
-	Chatroom  string // 群 wxid；全局画像为空字符串
-	Member    string // 成员 wxid
-	Profile   string // 画像文本
-	LastMsgID int64  // 已处理到的 statistics.id 水位线
-	UpdatedAt string
-}
-
-// named 同时适配 *contact.Contact 与 *chatroom.Member 的展示名读取
-type named interface {
-	GetRemark() string
-	GetNickname() string
-	GetAlias() string
-	GetUsername() string
-}
 
 func displayNameOf(n named) string {
 	for _, v := range []string{n.GetRemark(), n.GetNickname(), n.GetAlias(), n.GetUsername()} {
@@ -56,25 +21,24 @@ func displayNameOf(n named) string {
 	return ""
 }
 
-// handleProfile 人物画像触发入口：识别 issuer / chatroomWxid / @ 的 wxid，调用 runProfile，回复结果。
+// handleProfile 人物画像触发入口：识别 issuer / chatroomWxid / @ 的 wxid，异步生成 + 回复。
 // 返回 (handled=true, nil) 以消费事件，避免 ai 重复回复。
-func (p *StatisticsPlugin) handleProfile(msg *message.Message, name string, global, rebuild bool) (bool, error) {
+func (p *ProfilePlugin) handleProfile(msg *message.Message, name string, global, rebuild bool) (bool, error) {
 	if msg.GetSender() == nil {
 		return true, fmt.Errorf("无法确定消息来源")
 	}
 
 	// 异步生成+发送：冷启动可能涉及数十块 × AI 调用，耗时远超事件分发超时（1 分钟）。
-	// 若同步处理，分发器会判定 statistics 超时并继续把事件传给 ai，导致「画像 + ai 回复」同时出现。
-	// 这里立即返回 handled=true 消费事件（ai 不再回复），后台完成生成与发送。
+	// 同步会触发超时→事件链继续→ai 重复回复。这里立即返回 handled=true 消费事件，后台完成。
 	go p.processProfile(msg, name, global, rebuild)
 	return true, nil
 }
 
 // processProfile 实际的画像生成与发送（在后台 goroutine 中运行）。
-func (p *StatisticsPlugin) processProfile(msg *message.Message, name string, global, rebuild bool) {
+func (p *ProfilePlugin) processProfile(msg *message.Message, name string, global, rebuild bool) {
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("[statistics] 画像生成崩溃", "err", r)
+			slog.Error("[profile] 画像生成崩溃", "err", r)
 		}
 	}()
 
@@ -101,24 +65,22 @@ func (p *StatisticsPlugin) processProfile(msg *message.Message, name string, glo
 
 	text, err := p.runProfile(issuer, chatroomWxid, name, atWxid, global, rebuild)
 	if err != nil {
-		slog.Warn("[statistics] 画像生成失败", "err", err)
+		slog.Warn("[profile] 画像生成失败", "err", err)
 		errMsg := "画像生成失败：" + err.Error()
-		if sendErr := p.sendText(msg.GetSender(), errMsg, nil); sendErr != nil {
-			slog.Warn("[statistics] 发送画像错误信息失败", "err", sendErr)
+		if sendErr := p.sendText(msg.GetSender(), errMsg); sendErr != nil {
+			slog.Warn("[profile] 发送画像错误信息失败", "err", sendErr)
 		}
 		return
 	}
 	if text != "" {
 		if sendErr := p.sendProfileResult(msg.GetSender(), text); sendErr != nil {
-			slog.Warn("[statistics] 发送画像失败", "err", sendErr)
+			slog.Warn("[profile] 发送画像失败", "err", sendErr)
 		}
 	}
 }
 
 // runProfile 先做权限与范围判定，再解析目标成员，最后生成/更新画像。
-// issuer 为触发者（群内为真实发言人 Member，私聊为本人）；chatroomWxid 非空表示群聊场景。
-// atWxid 为 @ 提人时由微信附带的被 @ 人 wxid（最可靠），非空时优先用于定位目标。
-func (p *StatisticsPlugin) runProfile(issuer named, chatroomWxid, targetName, atWxid string, global, rebuild bool) (string, error) {
+func (p *ProfilePlugin) runProfile(issuer named, chatroomWxid, targetName, atWxid string, global, rebuild bool) (string, error) {
 	if issuer == nil || issuer.GetUsername() == "" {
 		return "", fmt.Errorf("无法确定消息来源")
 	}
@@ -206,7 +168,7 @@ func (p *StatisticsPlugin) runProfile(issuer named, chatroomWxid, targetName, at
 }
 
 // resolveGlobal 按昵称/备注/用户名在全局联系人缓存中解析成员 wxid
-func (p *StatisticsPlugin) resolveGlobal(name string) (wxid, display string, err error) {
+func (p *ProfilePlugin) resolveGlobal(name string) (wxid, display string, err error) {
 	if p.contact == nil {
 		return "", "", fmt.Errorf("全局未找到成员：%s（contact 能力未注入）", name)
 	}
@@ -220,9 +182,7 @@ func (p *StatisticsPlugin) resolveGlobal(name string) (wxid, display string, err
 }
 
 // findMember 在当前群成员列表中按群显示名/昵称/备注/用户名匹配。
-// 群聊 @ 提人插入的是成员的「群显示名(DisplayName)」，可能与真实昵称不同，
-// 因此 DisplayName 必须参与匹配，且优先。
-func (p *StatisticsPlugin) findMember(chatroomWxid, name string) (*chatroom.Member, bool) {
+func (p *ProfilePlugin) findMember(chatroomWxid, name string) (*chatroom.Member, bool) {
 	if p.chatroom == nil {
 		return nil, false
 	}
@@ -240,8 +200,8 @@ func (p *StatisticsPlugin) findMember(chatroomWxid, name string) (*chatroom.Memb
 	return nil, false
 }
 
-// findMemberByWxid 在当前群成员列表中按 wxid 精确匹配（用于 @ 提人时已拿到 wxid 的场景）
-func (p *StatisticsPlugin) findMemberByWxid(chatroomWxid, wxid string) (*chatroom.Member, bool) {
+// findMemberByWxid 在当前群成员列表中按 wxid 精确匹配
+func (p *ProfilePlugin) findMemberByWxid(chatroomWxid, wxid string) (*chatroom.Member, bool) {
 	if p.chatroom == nil {
 		return nil, false
 	}
@@ -264,9 +224,9 @@ func isSelfName(sender named, name string) bool {
 }
 
 // generate 读取历史发言 → 切块 → 调用 ai.chat → 合并/冷启动 → 持久化
-func (p *StatisticsPlugin) generate(scopeChatroom, memberWxid, displayName string, rebuild bool) (string, error) {
+func (p *ProfilePlugin) generate(scopeChatroom, memberWxid, displayName string, rebuild bool) (string, error) {
 	if p.store == nil {
-		return "", fmt.Errorf("存储未初始化")
+		return "", errStoreNotReady
 	}
 	cfg := normalizeConfig(p.Config)
 	rec, exists := p.store.loadProfile(scopeChatroom, memberWxid)
@@ -279,9 +239,9 @@ func (p *StatisticsPlugin) generate(scopeChatroom, memberWxid, displayName strin
 		limit = cfg.ColdStartMaxMessages // 冷启动安全天花板
 	}
 
-	msgs, err := p.store.queryHistory(scopeChatroom, memberWxid, sinceID, limit)
+	msgs, err := p.queryHistory(scopeChatroom, memberWxid, sinceID, limit)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("查询历史发言失败: %w", err)
 	}
 	if len(msgs) == 0 {
 		if exists && strings.TrimSpace(rec.Profile) != "" {
@@ -332,12 +292,39 @@ func (p *StatisticsPlugin) generate(scopeChatroom, memberWxid, displayName strin
 	}); err != nil {
 		return "", fmt.Errorf("保存画像失败: %w", err)
 	}
-	slog.Info("[statistics] 画像已生成", "scope", scopeChatroom, "member", memberWxid, "chunks", len(chunks))
+	slog.Info("[profile] 画像已生成", "scope", scopeChatroom, "member", memberWxid, "chunks", len(chunks))
 	return final, nil
 }
 
+// queryHistory 经跨插件调用 statistics.query_messages 能力取历史发言（不直接读 statistics.db）
+func (p *ProfilePlugin) queryHistory(scopeChatroom, memberWxid string, sinceID int64, limit int) ([]historyMsg, error) {
+	if p.caller == nil {
+		return nil, fmt.Errorf("调用能力未注入（需要 statistics 插件提供 statistics.query_messages）")
+	}
+	args := map[string]string{
+		"member":   memberWxid,
+		"since_id": strconv.FormatInt(sinceID, 10),
+	}
+	if scopeChatroom != "" {
+		args["chatroom"] = scopeChatroom
+	}
+	if limit > 0 {
+		args["limit"] = strconv.Itoa(limit)
+	}
+	mime, data, err := p.caller.CallPlugin("statistics.query_messages", args)
+	if err != nil {
+		return nil, err
+	}
+	_ = mime
+	var msgs []historyMsg
+	if err := json.Unmarshal(data, &msgs); err != nil {
+		return nil, fmt.Errorf("解析历史发言失败: %w", err)
+	}
+	return msgs, nil
+}
+
 // callAIChunk 对单块历史发言产出局部观察
-func (p *StatisticsPlugin) callAIChunk(ch []historyMsg) (string, error) {
+func (p *ProfilePlugin) callAIChunk(ch []historyMsg) (string, error) {
 	payload, err := json.Marshal(aiChatPayload{
 		System:   systemColdChunk,
 		Messages: []chatMessage{{Role: "user", Content: formatChunk(ch)}},
@@ -349,7 +336,7 @@ func (p *StatisticsPlugin) callAIChunk(ch []historyMsg) (string, error) {
 }
 
 // callAIMerge 合并已有画像与新增观察，产出完整画像
-func (p *StatisticsPlugin) callAIMerge(displayName, existing string, observations []string, quant string) (string, error) {
+func (p *ProfilePlugin) callAIMerge(displayName, existing string, observations []string, quant string) (string, error) {
 	user := buildMergeUserContent(displayName, existing, observations, quant)
 	payload, err := json.Marshal(aiChatPayload{
 		System:   systemMerge,
@@ -362,7 +349,7 @@ func (p *StatisticsPlugin) callAIMerge(displayName, existing string, observation
 }
 
 // callAI 经跨插件调用使用 ai 插件的 ai.chat 能力
-func (p *StatisticsPlugin) callAI(payload string) (string, error) {
+func (p *ProfilePlugin) callAI(payload string) (string, error) {
 	if p.caller == nil {
 		return "", fmt.Errorf("调用能力未注入（需要 ai 插件提供 ai.chat）")
 	}
