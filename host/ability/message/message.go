@@ -120,7 +120,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		if data.GetMedia() == nil {
 			break
 		}
-		resp, err := a.api.SendVideo(receiver, nil, bytes.NewReader(data.GetMedia().Data), data.GetDuration())
+		resp, err := a.api.SendVideo(receiver, bytes.NewReader(data.GetThumb()), bytes.NewReader(data.GetMedia().Data), data.GetDuration())
 		if err != nil {
 			return nil, err
 		}
@@ -243,8 +243,8 @@ func (a *ability) Revoke(receiver string, newMsgId uint64) (*sdk.Revoke_Response
 // Download 下载媒体资源
 func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
 	receiver := msg.GetReceiver().GetUsername()
-	switch msg.GetType() {
-	case sdk.TypeImage:
+	switch msg.GetType().GetCode() {
+	case sdk.TypeImage.Code:
 		data := msg.GetImage()
 		if data.GetMedia() == nil {
 			return io.NopCloser(bytes.NewReader(nil)), nil
@@ -254,7 +254,7 @@ func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
 			return nil, err
 		}
 		return io.NopCloser(bytes.NewReader(resp.GetChunk().GetData())), nil
-	case sdk.TypeVideo:
+	case sdk.TypeVideo.Code:
 		data := msg.GetVideo()
 		if data.GetMedia() == nil {
 			return io.NopCloser(bytes.NewReader(nil)), nil
@@ -264,7 +264,7 @@ func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
 			return nil, err
 		}
 		return io.NopCloser(bytes.NewReader(resp.GetChunk().GetData())), nil
-	case sdk.TypeVoice:
+	case sdk.TypeVoice.Code:
 		data := msg.GetVoice()
 		if data.GetMedia() == nil {
 			return io.NopCloser(bytes.NewReader(nil)), nil
