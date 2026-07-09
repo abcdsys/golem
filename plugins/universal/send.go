@@ -3,29 +3,18 @@ package main
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/sbgayhub/golem/sdk/contact"
 	"github.com/sbgayhub/golem/sdk/message"
 )
 
-func (p *UniversalPlugin) sendResult(receiver *contact.Contact, sendType, result string, mentions []mentionTarget) error {
+func (p *UniversalPlugin) sendResult(receiver *contact.Contact, sendType string, result executeResult, mentions []mentionTarget) error {
 	if p.message == nil {
 		return errors.New("message ability is not injected")
 	}
 
-	var mediaData []byte
-	if needsMediaData(sendType) {
-		var err error
-		mediaData, err = downloadMedia(result, p.requestTimeout())
-		if err != nil {
-			return err
-		}
-	}
-
-	msg, err := buildMessage(receiver, sendType, result, mediaData, mentions)
+	msg, err := buildMessage(receiver, sendType, result, mentions)
 	if err != nil {
 		return err
 	}
@@ -33,45 +22,50 @@ func (p *UniversalPlugin) sendResult(receiver *contact.Contact, sendType, result
 	return err
 }
 
-func buildMessage(receiver *contact.Contact, sendType, result string, mediaData []byte, mentions []mentionTarget) (*message.Message, error) {
+func buildMessage(receiver *contact.Contact, sendType string, result executeResult, mentions []mentionTarget) (*message.Message, error) {
 	if receiver == nil {
 		return nil, errors.New("receiver is empty")
 	}
-	if strings.TrimSpace(result) == "" {
-		return nil, errors.New("result is empty")
+
+	mediaType := normalizeSendType(sendType)
+	if mediaType == "text" {
+		if strings.TrimSpace(result.text) == "" {
+			return nil, errors.New("result is empty")
+		}
+		content, reminds := applyMentionPrefix(result.text, mentions)
+		return &message.Message{
+			Receiver: receiver,
+			Content:  content,
+			Type:     message.TypeText,
+			Data:     &message.Message_Text{Text: &message.TextData{Content: content, Reminds: reminds}},
+		}, nil
 	}
 
-	content := strings.TrimRight(strings.TrimSpace(result), "\n")
-	var reminds []string
-	if normalizeSendType(sendType) == "text" {
-		content, reminds = applyMentionPrefix(result, mentions)
+	if len(result.mediaData) == 0 {
+		return nil, errors.New(mediaType + " data is empty")
 	}
 	msg := &message.Message{
 		Receiver: receiver,
-		Content:  content,
+		Content:  "",
 	}
-	switch normalizeSendType(sendType) {
-	case "text":
-		msg.Type = message.TypeText
-		msg.Data = &message.Message_Text{Text: &message.TextData{Content: content, Reminds: reminds}}
+	switch mediaType {
 	case "image":
-		if len(mediaData) == 0 {
-			return nil, errors.New("image data is empty")
-		}
 		msg.Type = message.TypeImage
-		msg.Data = &message.Message_Image{Image: &message.ImageData{Media: &message.Media{Data: mediaData}}}
+		msg.Data = &message.Message_Image{Image: &message.ImageData{Media: &message.Media{Data: result.mediaData}}}
 	case "video":
-		if len(mediaData) == 0 {
-			return nil, errors.New("video data is empty")
+		duration, thumb, err := extractVideoMeta(result.mediaData)
+		if err != nil {
+			return nil, err
 		}
 		msg.Type = message.TypeVideo
-		msg.Data = &message.Message_Video{Video: &message.VideoData{Media: &message.Media{Data: mediaData}}}
+		msg.Data = &message.Message_Video{Video: &message.VideoData{
+			Media:    &message.Media{Data: result.mediaData},
+			Duration: duration,
+			Thumb:    thumb,
+		}}
 	case "emoji":
-		if len(mediaData) == 0 {
-			return nil, errors.New("emoji data is empty")
-		}
 		msg.Type = message.TypeEmoji
-		msg.Data = &message.Message_Emoji{Emoji: &message.EmojiData{Media: &message.Media{Data: mediaData}}}
+		msg.Data = &message.Message_Emoji{Emoji: &message.EmojiData{Media: &message.Media{Data: result.mediaData}}}
 	default:
 		return nil, fmt.Errorf("unsupported send_type: %s", sendType)
 	}
@@ -94,24 +88,4 @@ func applyMentionPrefix(result string, mentions []mentionTarget) (string, []stri
 		return result, nil
 	}
 	return strings.Join(prefixes, " ") + " " + result, reminds
-}
-
-func needsMediaData(sendType string) bool {
-	switch normalizeSendType(sendType) {
-	case "image", "video", "emoji":
-		return true
-	default:
-		return false
-	}
-}
-
-func downloadMedia(rawURL string, timeout time.Duration) ([]byte, error) {
-	data, err := doRequest(http.MethodGet, strings.TrimSpace(rawURL), nil, "", timeout)
-	if err != nil {
-		return nil, fmt.Errorf("download media: %w", err)
-	}
-	if len(data) == 0 {
-		return nil, errors.New("download media: empty body")
-	}
-	return data, nil
 }

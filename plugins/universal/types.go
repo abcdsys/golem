@@ -6,7 +6,6 @@ import (
 
 const (
 	defaultHTTPTimeoutSeconds = 15
-	defaultMethod             = "GET"
 	defaultSendType           = "text"
 )
 
@@ -22,9 +21,6 @@ type Rule struct {
 	SendType           string   `toml:"send_type" comment:"发送类型：text|emoji|image|video"`
 	ResultPath         string   `toml:"result_path" comment:"gjson 路径，空则使用响应 body 原文"`
 	At                 bool     `toml:"at" comment:"是否在文本回复中 @ 参数或引用对应用户"`
-	ContinueRequest    bool     `toml:"continue_request" comment:"是否继续请求 result_path 提取出的地址"`
-	ContinueMethod     string   `toml:"continue_method" comment:"继续请求的方法"`
-	ContinueResultPath string   `toml:"continue_result_path" comment:"继续请求响应的 gjson 路径，空则使用响应 body 原文"`
 	Enabled            *bool    `toml:"enabled,omitempty" comment:"是否启用，空值按启用处理"`
 }
 

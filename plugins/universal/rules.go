@@ -119,11 +119,6 @@ func validateRule(rule Rule) error {
 	if err := validateMethod(rule.Method); err != nil {
 		return fmt.Errorf("规则 %s: %w", rule.ID, err)
 	}
-	if rule.ContinueRequest {
-		if err := validateMethod(rule.ContinueMethod); err != nil {
-			return fmt.Errorf("规则 %s continue_method: %w", rule.ID, err)
-		}
-	}
 	if err := validateSendType(rule.SendType); err != nil {
 		return fmt.Errorf("规则 %s: %w", rule.ID, err)
 	}
@@ -139,8 +134,6 @@ func applyRuleDefaults(rule *Rule) {
 	rule.Method = normalizeMethod(rule.Method)
 	rule.SendType = normalizeSendType(rule.SendType)
 	rule.ResultPath = strings.TrimSpace(rule.ResultPath)
-	rule.ContinueMethod = normalizeMethod(rule.ContinueMethod)
-	rule.ContinueResultPath = strings.TrimSpace(rule.ContinueResultPath)
 	if rule.Enabled == nil {
 		rule.Enabled = new(true)
 	}
@@ -218,9 +211,6 @@ func formatRule(rule Rule) string {
 		"发送类型：" + rule.SendType,
 		"结果路径：" + emptyPlaceholder(rule.ResultPath),
 		"艾特：" + strconv.FormatBool(rule.At),
-		"继续请求：" + strconv.FormatBool(rule.ContinueRequest),
-		"继续请求方法：" + rule.ContinueMethod,
-		"继续结果路径：" + emptyPlaceholder(rule.ContinueResultPath),
 	}, "\n")
 }
 

@@ -20,9 +20,6 @@ type AddCommand struct {
 	SendType           string   `flag:"t,send-type" help:"发送类型：text|emoji|image|video，默认 text"`
 	ResultPath         string   `flag:"p,result-path" help:"gjson 路径；为空时直接使用响应 body 原文"`
 	At                 bool     `flag:"at" value:"false" help:"是否在文本回复中 @ 参数或引用对应用户，默认 false"`
-	ContinueRequest    bool     `flag:"f,continue"  value:"false" help:"是否继续请求结果中的地址：true|false，默认 false"`
-	ContinueMethod     string   `flag:"M,continue-method" help:"继续请求的方法，默认 GET"`
-	ContinueResultPath string   `flag:"P,continue-result-path" help:"继续请求响应的 gjson 路径；为空时直接使用响应 body 原文"`
 }
 
 type UpdateCommand struct {
@@ -36,13 +33,9 @@ type UpdateCommand struct {
 	SendType           string   `flag:"t,send-type" help:"发送类型：text|emoji|image|video"`
 	ResultPath         string   `flag:"p,result-path" help:"gjson 路径；为空时保持不变"`
 	At                 *bool    `flag:"at" value:"false" help:"是否在文本回复中 @ 参数或引用对应用户：true|false"`
-	ContinueRequest    bool     `flag:"f,continue" value:"false" help:"是否继续请求结果中的地址：true|false"`
-	ContinueMethod     string   `flag:"M,continue-method" help:"继续请求的方法"`
-	ContinueResultPath string   `flag:"P,continue-result-path" help:"继续请求响应的 gjson 路径；为空时保持不变"`
 	ClearHeaders       bool     `flag:"clear-headers" help:"清空请求头" value:"false"`
 	ClearBody          bool     `flag:"clear-body" help:"清空请求体" value:"false"`
 	ClearResultPath    bool     `flag:"clear-result-path" help:"清空结果路径，之后直接使用响应 body 原文" value:"false"`
-	ClearContinuePath  bool     `flag:"clear-continue-result-path" help:"清空继续请求结果路径，之后直接使用响应 body 原文" value:"false"`
 }
 
 type ListCommand struct {
@@ -99,19 +92,16 @@ func (p *UniversalPlugin) handleAdd(cmd AddCommand) (string, error) {
 	}
 
 	rule := Rule{
-		ID:                 strings.TrimSpace(cmd.ID),
-		Keywords:           keywords,
-		URL:                strings.TrimSpace(cmd.URL),
-		Method:             cmd.Method,
-		Headers:            cmd.Headers,
-		Body:               cmd.Body,
-		SendType:           cmd.SendType,
-		ResultPath:         strings.TrimSpace(cmd.ResultPath),
-		At:                 cmd.At,
-		ContinueRequest:    cmd.ContinueRequest,
-		ContinueMethod:     cmd.ContinueMethod,
-		ContinueResultPath: strings.TrimSpace(cmd.ContinueResultPath),
-		Enabled:            new(true),
+		ID:         strings.TrimSpace(cmd.ID),
+		Keywords:   keywords,
+		URL:        strings.TrimSpace(cmd.URL),
+		Method:     cmd.Method,
+		Headers:    cmd.Headers,
+		Body:       cmd.Body,
+		SendType:   cmd.SendType,
+		ResultPath: strings.TrimSpace(cmd.ResultPath),
+		At:         cmd.At,
+		Enabled:    new(true),
 	}
 
 	p.mu.Lock()
@@ -186,22 +176,6 @@ func (p *UniversalPlugin) handleUpdate(cmd UpdateCommand) (string, error) {
 	}
 	if cmd.At != nil {
 		rule.At = *cmd.At
-		changed = true
-	}
-	if cmd.ContinueRequest {
-		rule.ContinueRequest = cmd.ContinueRequest
-		changed = true
-	}
-	if cmd.ContinueMethod != "" {
-		rule.ContinueMethod = cmd.ContinueMethod
-		changed = true
-	}
-	if cmd.ClearContinuePath {
-		rule.ContinueResultPath = ""
-		changed = true
-	}
-	if cmd.ContinueResultPath != "" {
-		rule.ContinueResultPath = strings.TrimSpace(cmd.ContinueResultPath)
 		changed = true
 	}
 	if !changed {
@@ -292,8 +266,8 @@ func (p *UniversalPlugin) handleHelp(HelpCommand) (string, error) {
 		"命令：",
 		"/universal list",
 		"/universal get <id>",
-		"/universal add <id> -k <keywords> -u <url> [-m GET] [-t text] [-H A=B;C=D] [-b body] [-p result.path] [--at true|false] [-f true|false] [-M GET] [-P result.path]",
-		"/universal update <id> [-k <keywords>] [-u <url>] [-m GET] [-t image] [-H A=B] [-b body] [-p result.path] [--at true|false] [-f true|false] [-M GET] [-P result.path] [--clear-headers] [--clear-body] [--clear-result-path] [--clear-continue-result-path]",
+		"/universal add <id> -k <keywords> -u <url> [-m GET] [-t text] [-H A=B;C=D] [-b body] [-p result.path] [--at true|false]",
+		"/universal update <id> [-k <keywords>] [-u <url>] [-m GET] [-t image] [-H A=B] [-b body] [-p result.path] [--at true|false] [--clear-headers] [--clear-body] [--clear-result-path]",
 		"/universal enable <id>",
 		"/universal disable <id>",
 		"/universal delete <id>",

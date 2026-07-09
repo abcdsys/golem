@@ -8,7 +8,7 @@
 - **模板变量系统**：支持丰富的变量替换（参数、引用消息、自定义变量等）
 - **HTTP 请求**：支持 GET/POST/PUT/DELETE 等各种请求方法
 - **结果提取**：使用 gjson 路径语法精确提取 JSON 响应内容
-- **继续请求**：支持从第一次响应中提取 URL 进行二次请求
+- **二进制媒体支持**：响应体本身即为图片/视频等二进制数据时，可直接发送无需二次请求；`result_path` 非空时自动从提取的 URL 进行二次 GET 下载媒体
 - **多种消息类型**：支持发送文本、图片、视频、表情等多种消息
 - **智能 @ 提及**：可自动 @ 引用消息的用户或参数中的用户
 - **规则管理**：提供完整的规则增删改查、启用禁用命令
@@ -62,8 +62,21 @@ pixiv width=800 height=600
 2. **解析消息**：将消息按第一个空格分割为 `keyword` 和 `param`
 3. **匹配规则**：使用 `keyword` 进行全文匹配查找对应规则
 4. **执行请求**：使用模板变量替换 URL、请求头、请求体后发送 HTTP 请求
-5. **提取结果**：使用 gjson 路径从响应中提取所需内容
+5. **结果处理**：根据 `send_type` 与 `result_path` 的组合决定如何处理响应（见下文）
 6. **发送消息**：根据规则配置的消息类型发送结果
+
+### send_type × result_path 双控语义
+
+请求得到响应体 `body` 后，按 `send_type` 与 `result_path` 是否为空分四种情况：
+
+| send_type | result_path | 行为 |
+|-----------|-------------|------|
+| `text` | 空 | 将 `body` 原文作为文本发送 |
+| `text` | 非空 | 用 gjson 从 `body` 提取字段，作为文本发送 |
+| `image`/`video`/`emoji` | 空 | `body` 本身即二进制媒体，直接发送（不再二次请求） |
+| `image`/`video`/`emoji` | 非空 | 用 gjson 从 `body` 提取 URL，复用首次请求的头部进行二次 GET，第二个 `body` 即待发送的二进制媒体 |
+
+> 该设计修复了 historic bug：当 API 直接返回二进制（如 `http://api.yujn.cn/api/haibian.php` 返回视频二进制）时，旧逻辑会把二进制当作 URL 再请求一次。现在只要 `send_type` 为媒体且 `result_path` 为空，即把首次响应体直接作为媒体发送。
 
 ### 参数解析规则
 
@@ -125,11 +138,8 @@ pixiv width=800 height=600
 | `headers` | string | ❌ | - | 请求头，格式：`A=B;C=D` |
 | `body` | string | ❌ | - | 请求体模板 |
 | `send_type` | string | ❌ | `text` | 发送类型：`text`\|`emoji`\|`image`\|`video` |
-| `result_path` | string | ❌ | - | gjson 路径，空则使用响应原文 |
+| `result_path` | string | ❌ | - | gjson 路径，空则使用响应原文（媒体类型空路径时直接发送响应体二进制） |
 | `at` | bool | ❌ | `false` | 是否在文本回复中 @ 用户 |
-| `continue_request` | bool | ❌ | `false` | 是否继续请求结果中的地址 |
-| `continue_method` | string | ❌ | `GET` | 继续请求的方法 |
-| `continue_result_path` | string | ❌ | - | 继续请求响应的 gjson 路径 |
 | `enabled` | *bool | ❌ | `true` | 是否启用规则 |
 
 ### 配置文件示例
@@ -186,9 +196,6 @@ enabled = true
 - `-t, --send-type`：发送类型，默认 `text`
 - `-p, --result-path`：gjson 结果路径
 - `--at`：是否 @ 用户，默认 `false`
-- `-f, --continue`：是否继续请求，默认 `false`
-- `-M, --continue-method`：继续请求方法
-- `-P, --continue-result-path`：继续请求结果路径
 
 **示例：**
 
@@ -205,8 +212,8 @@ enabled = true
 # 启用 @ 功能
 /universal add cp -k cp -u "https://api.example.com/cp?a={{arg_1}}&b={{arg_2}}" -t text --at true
 
-# 二次请求（先获取 URL，再请求该 URL）
-/universal add img -k 图片 -u "https://api.example.com/get-url" -p url -f true -M GET -P data.image -t image
+# 响应体即为二进制视频（无需 result_path，直接发送）
+/universal add haibian -k 看风景,海边 -u "http://api.yujn.cn/api/haibian.php" -t video
 ```
 
 ### 更新规则
@@ -220,7 +227,6 @@ enabled = true
 - `--clear-headers`：清空请求头
 - `--clear-body`：清空请求体
 - `--clear-result-path`：清空结果路径
-- `--clear-continue-result-path`：清空继续请求结果路径
 
 **示例：**
 
@@ -320,16 +326,20 @@ cp 李四
 
 ### 5. 二次请求场景
 
-**场景**：API 返回的是资源 URL，需要再次请求获取实际内容
+**场景**：API 返回的是资源 URL，需要再次请求获取实际媒体内容
+
+当 `send_type` 为 `image`/`video`/`emoji` 且 `result_path` 非空时，插件会先用 gjson 从首次响应提取 URL，再复用首次请求的头部对该 URL 进行第二次 GET，最终发送第二次响应体（即二进制媒体）。
 
 ```bash
-/universal add douyin -k 抖音解析 -u "https://api.example.com/douyin/parse?url={{arg_1}}" -p video_url -f true -M GET -t video
+/universal add douyin -k 抖音解析 -u "https://api.example.com/douyin/parse?url={{arg_1}}" -p video_url -t video
 ```
 
 流程：
-1. 第一次请求：解析抖音链接，获得视频 URL
-2. 第二次请求：下载视频 URL
+1. 第一次请求：解析抖音链接，响应 JSON 中含 `video_url`
+2. 第二次请求：GET `video_url`（复用首次请求头），下载视频二进制
 3. 发送视频消息
+
+> 若 API 直接返回二进制媒体（响应体本身就是图片/视频），则将 `result_path` 留空即可，无需二次请求。
 
 ### 6. 自定义 API 调用
 
@@ -415,7 +425,7 @@ POST/PUT 请求支持模板化的请求体：
 4. **HTTP 超时**：默认超时 15 秒，可通过 `http_timeout_seconds` 配置
 5. **变量命名**：自定义变量名必须符合 `[A-Za-z_][A-Za-z0-9_]*` 格式
 6. **请求头格式**：多个请求头用分号分隔，格式为 `Key=Value;Key2=Value2`
-7. **继续请求**：启用 `continue_request` 时，第一次请求的结果必须是一个有效的 URL
+7. **媒体二次请求**：`send_type` 为媒体且 `result_path` 非空时，提取出的字段必须是合法 URL，否则报错；`result_path` 为空时响应体必须是非空二进制
 
 ## 🔍 故障排查
 

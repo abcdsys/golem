@@ -13,48 +13,71 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func executeRule(rule Rule, vars map[string]string, timeout time.Duration) (string, error) {
-	applyRuleDefaults(&rule)
+// executeResult 承载请求链路的最终产物。
+// text  非空：作为文本消息发送（send_type=text）。
+// mediaData 非空：作为媒体消息发送（send_type=image/video/emoji）。
+type executeResult struct {
+	text      string
+	mediaData []byte
+}
 
+func executeRule(rule Rule, vars map[string]string, timeout time.Duration) (executeResult, error) {
 	url, err := renderTemplate(rule.URL, vars)
 	if err != nil {
-		return "", fmt.Errorf("render url: %w", err)
+		return executeResult{}, fmt.Errorf("render url: %w", err)
 	}
 	headersText, err := renderTemplate(rule.Headers, vars)
 	if err != nil {
-		return "", fmt.Errorf("render headers: %w", err)
+		return executeResult{}, fmt.Errorf("render headers: %w", err)
 	}
 	body, err := renderTemplate(rule.Body, vars)
 	if err != nil {
-		return "", fmt.Errorf("render body: %w", err)
+		return executeResult{}, fmt.Errorf("render body: %w", err)
 	}
 	headers, err := parseHeaders(headersText)
 	if err != nil {
-		return "", err
+		return executeResult{}, err
 	}
 
 	response, err := doRequest(rule.Method, strings.TrimSpace(url), headers, body, timeout)
 	if err != nil {
-		return "", err
+		return executeResult{}, err
 	}
-	result, err := extractResult(response, rule.ResultPath)
+
+	// send_type × result_path 双控：
+	// - text：result_path 空→body 原文；非空→gjson 提取文本
+	// - 媒体：result_path 空→body 即二进制直接发送；非空→gjson 提取 URL 后二次 GET，body 即二进制
+	if normalizeSendType(rule.SendType) == "text" {
+		text, err := extractResult(response, rule.ResultPath)
+		if err != nil {
+			return executeResult{}, err
+		}
+		return executeResult{text: text}, nil
+	}
+
+	if strings.TrimSpace(rule.ResultPath) == "" {
+		if len(response) == 0 {
+			return executeResult{}, errors.New("media response body is empty")
+		}
+		return executeResult{mediaData: response}, nil
+	}
+
+	nextURL, err := extractResult(response, rule.ResultPath)
 	if err != nil {
-		return "", err
+		return executeResult{}, err
 	}
-
-	if !rule.ContinueRequest {
-		return result, nil
-	}
-
-	nextURL := strings.TrimSpace(result)
+	nextURL = strings.TrimSpace(nextURL)
 	if nextURL == "" {
-		return "", errors.New("continue request url is empty")
+		return executeResult{}, errors.New("media url extracted from result_path is empty")
 	}
-	response, err = doRequest(rule.ContinueMethod, nextURL, headers, "", timeout)
+	mediaData, err := doRequest(http.MethodGet, nextURL, headers, "", timeout)
 	if err != nil {
-		return "", err
+		return executeResult{}, fmt.Errorf("fetch media: %w", err)
 	}
-	return extractResult(response, rule.ContinueResultPath)
+	if len(mediaData) == 0 {
+		return executeResult{}, errors.New("media response body is empty")
+	}
+	return executeResult{mediaData: mediaData}, nil
 }
 
 func doRequest(method, url string, headers map[string]string, body string, timeout time.Duration) ([]byte, error) {
