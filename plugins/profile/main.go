@@ -38,8 +38,8 @@ func (p *ProfilePlugin) GetMetadata() *plugin.Metadata {
 	return &plugin.Metadata{
 		Name:        "profile",
 		Author:      "ovo",
-		Version:     "1.0.0",
-		Description: "群成员人物画像插件：基于历史发言经 AI 生成/增量更新画像并渲染图片发送。历史发言经 statistics.query_messages 能力获取，LLM 经 ai.chat；按配置 RenderImage 决定渲染图片（经 markdown.to.image，要求 LLM 输出 markdown）或发送纯文本（要求 LLM 输出无 markdown 符号的纯文本）。",
+		Version:     "1.1.0",
+		Description: "群成员人物画像插件：基于历史发言经 AI 生成/增量更新画像并渲染图片发送。历史发言经 statistics.query_messages 能力获取，LLM 经 ai.chat；按配置 RenderImage 决定渲染图片（经 markdown.to.image，要求 LLM 输出 markdown）或发送纯文本（要求 LLM 输出无 markdown 符号的纯文本）。群聊任意成员可查本群成员；私聊人人可查自己的全局画像或自己在 #指定群 的画像，主人（Owner）还可查指定成员的全局 / #指定群画像。",
 		Priority:    0,
 		Next:        false,
 		AlwaysRun:   false,
@@ -65,12 +65,12 @@ func (p *ProfilePlugin) OnEvent(event *plugin.Event) (bool, error) {
 		return false, nil
 	}
 
-	name, global, rebuild, triggered := parseTrigger(msg)
+	opts, triggered := parseTrigger(msg)
 	if !triggered {
 		return false, nil
 	}
 
-	return p.handleProfile(msg, name, global, rebuild)
+	return p.handleProfile(msg, opts)
 }
 
 // OnLoad 插件加载时调用
