@@ -27,16 +27,34 @@ type chatCompletionResponse struct {
 	} `json:"error,omitempty"`
 }
 
+// resolveProvider 解析会话当前生效的 provider（会话级覆盖优先，回退全局）
+func (p *AiPlugin) resolveProvider(sessionKey string) (*Provider, error) {
+	config := p.configSnapshot()
+	name := p.getActiveProvider(sessionKey)
+	if strings.TrimSpace(name) == "" {
+		return nil, errors.New("未配置 active provider，请先 /ai provider-add 新增再 /ai set -p 切换")
+	}
+	prov, ok := config.Providers[name]
+	if !ok || prov == nil {
+		return nil, fmt.Errorf("provider 不存在：%s", name)
+	}
+	if strings.TrimSpace(prov.BaseURL) == "" {
+		return nil, fmt.Errorf("provider %s 缺少 base_url", name)
+	}
+	if strings.TrimSpace(prov.APIKey) == "" {
+		return nil, fmt.Errorf("provider %s 缺少 api_key", name)
+	}
+	if strings.TrimSpace(prov.Model) == "" {
+		return nil, fmt.Errorf("provider %s 缺少 model", name)
+	}
+	return prov, nil
+}
+
 func (p *AiPlugin) chat(sessionKey string) (string, error) {
 	config := p.configSnapshot()
-	if config.BaseURL == "" {
-		return "", errors.New("AI base_url 未配置")
-	}
-	if config.APIKey == "" {
-		return "", errors.New("AI api_key 未配置")
-	}
-	if config.Model == "" {
-		return "", errors.New("AI model 未配置")
+	prov, err := p.resolveProvider(sessionKey)
+	if err != nil {
+		return "", err
 	}
 
 	messages := make([]openAIMessage, 0, p.getMaxContextMessages(sessionKey)+1)
@@ -49,10 +67,14 @@ func (p *AiPlugin) chat(sessionKey string) (string, error) {
 		return "", errors.New("AI 上下文为空")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.HTTPTimeoutSeconds)*time.Second)
+	timeout := prov.HTTPTimeoutSeconds
+	if timeout <= 0 {
+		timeout = config.HTTPTimeoutSeconds
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
-	return callOpenAI(ctx, http.DefaultClient, config.BaseURL, config.APIKey, chatCompletionRequest{
-		Model:    config.Model,
+	return callOpenAI(ctx, http.DefaultClient, prov.BaseURL, prov.APIKey, chatCompletionRequest{
+		Model:    prov.Model,
 		Messages: messages,
 	})
 }

@@ -42,6 +42,8 @@ func normalizeConfigValue(config Config) Config {
 	}
 	config.Prompts = normalizePrompts(config.Prompts, config.LegacyPrompt, config.ActivePrompt)
 	config.LegacyPrompt = ""
+	config.ActiveProvider = strings.TrimSpace(config.ActiveProvider)
+	config.Providers = normalizeProviders(config.Providers)
 	if config.MaxContextMessages <= 0 {
 		config.MaxContextMessages = defaultMaxContextMessages
 	}
@@ -54,10 +56,26 @@ func normalizeConfigValue(config Config) Config {
 	if config.ReplyRate > 1 {
 		config.ReplyRate = 1
 	}
-	config.BaseURL = strings.TrimSpace(config.BaseURL)
-	config.APIKey = strings.TrimSpace(config.APIKey)
-	config.Model = strings.TrimSpace(config.Model)
 	return config
+}
+
+// normalizeProviders 标准化 provider 映射
+func normalizeProviders(providers map[string]*Provider) map[string]*Provider {
+	normalized := make(map[string]*Provider, len(providers))
+	for name, prov := range providers {
+		name = strings.TrimSpace(name)
+		if name == "" || prov == nil {
+			continue
+		}
+		prov.BaseURL = strings.TrimSpace(prov.BaseURL)
+		prov.APIKey = strings.TrimSpace(prov.APIKey)
+		prov.Model = strings.TrimSpace(prov.Model)
+		if prov.HTTPTimeoutSeconds < 0 {
+			prov.HTTPTimeoutSeconds = 0
+		}
+		normalized[name] = prov
+	}
+	return normalized
 }
 
 // normalizePrompts 标准化提示词映射
@@ -84,14 +102,4 @@ func normalizePrompts(prompts map[string]string, legacyPrompt, activePrompt stri
 // activePromptContent 获取活动提示词内容
 func activePromptContent(config Config) string {
 	return strings.TrimSpace(config.Prompts[config.ActivePrompt])
-}
-
-// replyRate 获取全局回复概率（已废弃，保留用于兼容）
-func (p *AiPlugin) replyRate() float64 {
-	return p.configSnapshot().ReplyRate
-}
-
-// maxContextMessages 获取全局上下文消息数（已废弃，保留用于兼容）
-func (p *AiPlugin) maxContextMessages() int {
-	return p.configSnapshot().MaxContextMessages
 }

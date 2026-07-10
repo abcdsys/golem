@@ -24,6 +24,22 @@ func (p *AiPlugin) getMaxContextMessages(sessionKey string) int {
 	return p.configSnapshot().MaxContextMessages
 }
 
+// getActiveProvider 获取会话的活动 provider（优先使用会话配置，回退全局）
+func (p *AiPlugin) getActiveProvider(sessionKey string) string {
+	if cfg := p.getSessionConfig(sessionKey); cfg != nil && cfg.ActiveProvider != nil {
+		return *cfg.ActiveProvider
+	}
+	return p.configSnapshot().ActiveProvider
+}
+
+// isSilent 判断会话是否处于静默模式（优先使用会话配置，回退全局）
+func (p *AiPlugin) isSilent(sessionKey string) bool {
+	if cfg := p.getSessionConfig(sessionKey); cfg != nil && cfg.Silence != nil {
+		return *cfg.Silence
+	}
+	return p.configSnapshot().Silence
+}
+
 // getSessionConfig 线程安全地获取会话配置
 func (p *AiPlugin) getSessionConfig(sessionKey string) *SessionConfig {
 	p.sessionConfigMu.RLock()

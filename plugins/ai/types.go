@@ -35,4 +35,14 @@ type SessionConfig struct {
 	ReplyRate          *float64 `toml:"reply_rate,omitempty"`
 	ActivePrompt       *string  `toml:"active_prompt,omitempty"`
 	MaxContextMessages *int     `toml:"max_context_messages,omitempty"`
+	ActiveProvider     *string  `toml:"active_provider,omitempty"`
+	Silence            *bool    `toml:"silence,omitempty"`
+}
+
+// Provider 预设的 OpenAI 兼容服务提供方配置
+type Provider struct {
+	BaseURL            string `toml:"base_url" comment:"OpenAI 兼容接口地址，例如 https://api.openai.com/v1"`
+	APIKey             string `toml:"api_key" comment:"接口密钥"`
+	Model              string `toml:"model" comment:"模型名称"`
+	HTTPTimeoutSeconds int    `toml:"http_timeout_seconds,omitempty" comment:"请求超时秒数，0 表示使用全局缺省"`
 }

@@ -27,15 +27,15 @@ type AiPlugin struct {
 
 // Config 插件配置
 type Config struct {
-	BaseURL            string                    `toml:"base_url" comment:"OpenAI 兼容接口地址，例如 https://api.openai.com/v1"`
-	APIKey             string                    `toml:"api_key" comment:"接口密钥"`
-	Model              string                    `toml:"model" comment:"模型名称"`
+	Providers          map[string]*Provider      `toml:"providers,omitempty" comment:"Provider 预设映射，key 为 provider 名称"`
+	ActiveProvider     string                    `toml:"active_provider" comment:"当前使用的 provider 名称"`
 	ActivePrompt       string                    `toml:"active_prompt" comment:"当前使用的提示词名称"`
 	Prompts            map[string]string         `toml:"prompts" comment:"提示词映射，key 为提示词名称"`
 	LegacyPrompt       string                    `toml:"prompt,omitempty" comment:"旧版提示词配置，启动后迁移到 prompts.default"`
 	ReplyRate          float64                   `toml:"reply_rate" comment:"普通消息回复概率，取值 0~1"`
 	MaxContextMessages int                       `toml:"max_context_messages" comment:"每个会话最多保留的上下文消息数"`
-	HTTPTimeoutSeconds int                       `toml:"http_timeout_seconds" comment:"大模型请求超时时间，单位秒"`
+	HTTPTimeoutSeconds int                       `toml:"http_timeout_seconds" comment:"大模型请求超时缺省值，单位秒"`
+	Silence            bool                      `toml:"silence" comment:"全局静默模式，开启后仅在被 @ 或引用时回复"`
 	SessionConfigs     map[string]*SessionConfig `toml:"session_configs,omitempty" comment:"会话级配置，key 为会话标识"`
 }
 
@@ -57,6 +57,9 @@ func newAiPlugin() (*AiPlugin, error) {
 func (p *AiPlugin) shouldReply(in incomingMessage) bool {
 	if in.MentionedBot || in.QuotedBot {
 		return true
+	}
+	if p.isSilent(in.SessionKey) {
+		return false
 	}
 	if !in.IsChatroom {
 		return true

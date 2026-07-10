@@ -10,6 +10,7 @@ import (
 	"github.com/sbgayhub/golem/sdk/contact"
 	"github.com/sbgayhub/golem/sdk/message"
 	"github.com/sbgayhub/golem/sdk/plugin"
+	"google.golang.org/protobuf/proto"
 )
 
 // GetMetadata 返回插件元数据
@@ -17,8 +18,8 @@ func (p *AiPlugin) GetMetadata() *plugin.Metadata {
 	return &plugin.Metadata{
 		Name:        "ai",
 		Author:      "ovo",
-		Version:     "1.1.0",
-		Description: "AI 插件，使用 OpenAI 兼容接口处理消息并回复。支持会话级配置隔离。",
+		Version:     "1.2.0",
+		Description: "AI 插件，使用 OpenAI 兼容接口处理消息并回复。支持多 Provider、会话级配置隔离与静默模式。",
 		Priority:    1<<31 - 1,
 		Next:        false,
 		AlwaysRun:   false,
@@ -102,8 +103,8 @@ func (p *AiPlugin) OnEvent(event *plugin.Event) (bool, error) {
 	}
 
 	// 使用\n\n分割消息，多段发送
-	for _, s := range strings.Split(reply, "\n\n") {
-		if err := p.sendText(incoming.Receiver, s); err != nil {
+	for s := range strings.SplitSeq(reply, "\n\n") {
+		if err := p.sendText(incoming.Receiver, strings.TrimSpace(s)); err != nil {
 			return true, err
 		}
 		time.Sleep(time.Second)
@@ -176,8 +177,7 @@ func (p *AiPlugin) selfSnapshot() *contact.SelfInfo {
 	if p.self == nil {
 		return nil
 	}
-	self := *p.self
-	return &self
+	return proto.Clone(p.self).(*contact.SelfInfo)
 }
 
 // selfForEvent 获取事件用的自身信息

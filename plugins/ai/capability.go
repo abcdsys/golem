@@ -50,14 +50,9 @@ func (p *AiPlugin) OnCall(capability string, args map[string]string) (string, []
 // chatRaw 直接以给定消息调用 LLM（供跨插件调用），不带入会话上下文与预置提示词
 func (p *AiPlugin) chatRaw(system string, messages []openAIMessage) (string, error) {
 	config := p.configSnapshot()
-	if config.BaseURL == "" {
-		return "", fmt.Errorf("AI base_url 未配置")
-	}
-	if config.APIKey == "" {
-		return "", fmt.Errorf("AI api_key 未配置")
-	}
-	if config.Model == "" {
-		return "", fmt.Errorf("AI model 未配置")
+	prov, err := p.resolveProvider("")
+	if err != nil {
+		return "", err
 	}
 
 	full := make([]openAIMessage, 0, len(messages)+1)
@@ -66,12 +61,16 @@ func (p *AiPlugin) chatRaw(system string, messages []openAIMessage) (string, err
 	}
 	full = append(full, messages...)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.HTTPTimeoutSeconds)*time.Second)
+	timeout := prov.HTTPTimeoutSeconds
+	if timeout <= 0 {
+		timeout = config.HTTPTimeoutSeconds
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
 	slog.Debug("[ai] ai.chat 被调用", "messages", len(full))
-	return callOpenAI(ctx, http.DefaultClient, config.BaseURL, config.APIKey, chatCompletionRequest{
-		Model:    config.Model,
+	return callOpenAI(ctx, http.DefaultClient, prov.BaseURL, prov.APIKey, chatCompletionRequest{
+		Model:    prov.Model,
 		Messages: full,
 	})
 }
