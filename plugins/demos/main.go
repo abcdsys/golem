@@ -71,7 +71,8 @@ func main() {
 		"火子点歌": p.handleChooseMusic,
 
 		// 帮助
-		"demos": p.handleExplain,
+		"demos":   p.handleExplain,
+		"demos帮助": p.handleExplain,
 	}
 
 	slog.Info("[demos] 娱乐插件启动中...")

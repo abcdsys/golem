@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/sbgayhub/golem/sdk/message"
 
@@ -254,43 +255,38 @@ func (s *store) QueryTotal(sender, dateFilter string) (totalSummary, error) {
 	return total, nil
 }
 
-// queryMessages 拉取成员历史发言（供 statistics.query_messages 能力调用）。
-// chatroom 为空表示全局（跨群）查询，按 member 匹配；否则按 sender(群)+member 匹配。
-// sinceID>0 表示只取该 id 之后的新增消息（增量）；sinceID<=0 取全部（冷启动）。
+// queryMessages 拉取历史发言（供 statistics.query_messages 能力调用）。
+// chatroom、member 至少给一个：都给=群内成员；仅 chatroom=整群；仅 member=跨群全局。
+// since 非空时按本地时间下限过滤（格式 2006-01-02 15:04:05，与 timestamp 列的存储
+// 格式一致，可直接按字典序比较）。sinceID>0 表示只取该 id 之后的新增消息（增量）。
 // limit>0 限制返回条数（取最近的 limit 条）；limit<=0 不限制。返回时间正序。
 // 注：statistics 表的 timestamp 已按本地时间存储（record() 用 datetime(?, 'unixepoch', 'localtime')），
-// 这里直接读取，不再二次转换时区。
-func (s *store) queryMessages(chatroom, member string, sinceID int64, limit int) ([]historyMsg, error) {
-	var (
-		rows *sql.Rows
-		err  error
-	)
-	const cols = "id, content, timestamp"
-	if chatroom == "" {
-		if limit > 0 {
-			rows, err = s.statistics.Query(
-				`SELECT `+cols+` FROM statistics
-				WHERE member=? AND type='文本' AND id>?
-				ORDER BY id DESC LIMIT ?`, member, sinceID, limit)
-		} else {
-			rows, err = s.statistics.Query(
-				`SELECT `+cols+` FROM statistics
-				WHERE member=? AND type='文本' AND id>?
-				ORDER BY id`, member, sinceID)
-		}
-	} else {
-		if limit > 0 {
-			rows, err = s.statistics.Query(
-				`SELECT `+cols+` FROM statistics
-				WHERE sender=? AND member=? AND type='文本' AND id>?
-				ORDER BY id DESC LIMIT ?`, chatroom, member, sinceID, limit)
-		} else {
-			rows, err = s.statistics.Query(
-				`SELECT `+cols+` FROM statistics
-				WHERE sender=? AND member=? AND type='文本' AND id>?
-				ORDER BY id`, chatroom, member, sinceID)
-		}
+// 这里直接比较，不再二次转换时区。
+func (s *store) queryMessages(chatroom, member, since string, sinceID int64, limit int) ([]historyMsg, error) {
+	conds := []string{"type='文本'", "id>?"}
+	args := []any{sinceID}
+	if chatroom != "" {
+		conds = append(conds, "sender=?")
+		args = append(args, chatroom)
 	}
+	if member != "" {
+		conds = append(conds, "member=?")
+		args = append(args, member)
+	}
+	if since != "" {
+		conds = append(conds, "timestamp>=?")
+		args = append(args, since)
+	}
+
+	query := "SELECT id, content, timestamp FROM statistics WHERE " + strings.Join(conds, " AND ")
+	if limit > 0 {
+		query += " ORDER BY id DESC LIMIT ?"
+		args = append(args, limit)
+	} else {
+		query += " ORDER BY id"
+	}
+
+	rows, err := s.statistics.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("查询历史发言失败: %w", err)
 	}
@@ -308,7 +304,7 @@ func (s *store) queryMessages(chatroom, member string, sinceID int64, limit int)
 		return nil, err
 	}
 
-	// 冷启动走 ORDER BY id DESC LIMIT，这里反转回时间正序，便于顺序分析
+	// limit 分支走 ORDER BY id DESC，这里反转回时间正序，便于顺序分析
 	if limit > 0 {
 		for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
 			msgs[i], msgs[j] = msgs[j], msgs[i]

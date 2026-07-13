@@ -11,6 +11,17 @@ import (
 	"github.com/sbgayhub/golem/sdk/contact"
 )
 
+// handleHelp 发送用法帮助
+func (p *SetuPlugin) handleHelp(receiver *contact.Contact) (bool, error) {
+	p.sendText(receiver, "【setu 插件】用法：\n"+
+		"plmm / 漂亮妹妹 / 来点美女：随机美女图\n"+
+		"来点黑丝 / 来点白丝：随机黑丝/白丝（有概率是视频）\n"+
+		"看看腿：随机美腿图\n"+
+		"来点帅哥：随机帅哥图\n"+
+		"来点<关键词>：按关键词搜图（如：来点柯基）")
+	return true, nil
+}
+
 // handlePlmm 处理漂亮妹妹
 func (p *SetuPlugin) handlePlmm(receiver *contact.Contact) (bool, error) {
 	slog.Debug("[setu] 处理漂亮妹妹请求", "api", p.Config.ImgURL)

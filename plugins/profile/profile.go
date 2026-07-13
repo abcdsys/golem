@@ -23,19 +23,19 @@ func displayNameOf(n named) string {
 
 // handleProfile 人物画像触发入口：识别 issuer / chatroomWxid / @ 的 wxid，异步生成 + 回复。
 // 返回 (handled=true, nil) 以消费事件，避免 ai 重复回复。
-func (p *ProfilePlugin) handleProfile(msg *message.Message, name string, global, rebuild bool) (bool, error) {
+func (p *ProfilePlugin) handleProfile(msg *message.Message, opts triggerOpts) (bool, error) {
 	if msg.GetSender() == nil {
 		return true, fmt.Errorf("无法确定消息来源")
 	}
 
 	// 异步生成+发送：冷启动可能涉及数十块 × AI 调用，耗时远超事件分发超时（1 分钟）。
 	// 同步会触发超时→事件链继续→ai 重复回复。这里立即返回 handled=true 消费事件，后台完成。
-	go p.processProfile(msg, name, global, rebuild)
+	go p.processProfile(msg, opts)
 	return true, nil
 }
 
 // processProfile 实际的画像生成与发送（在后台 goroutine 中运行）。
-func (p *ProfilePlugin) processProfile(msg *message.Message, name string, global, rebuild bool) {
+func (p *ProfilePlugin) processProfile(msg *message.Message, opts triggerOpts) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("[profile] 画像生成崩溃", "err", r)
@@ -63,7 +63,7 @@ func (p *ProfilePlugin) processProfile(msg *message.Message, name string, global
 	}
 	atWxid := extractAtTargetWxid(msg, selfWxid)
 
-	text, err := p.runProfile(issuer, chatroomWxid, name, atWxid, global, rebuild)
+	text, err := p.runProfile(issuer, chatroomWxid, opts, atWxid)
 	if err != nil {
 		slog.Warn("[profile] 画像生成失败", "err", err)
 		errMsg := "画像生成失败：" + err.Error()
@@ -79,44 +79,88 @@ func (p *ProfilePlugin) processProfile(msg *message.Message, name string, global
 	}
 }
 
-// runProfile 先做权限与范围判定，再解析目标成员，最后生成/更新画像。
-func (p *ProfilePlugin) runProfile(issuer named, chatroomWxid, targetName, atWxid string, global, rebuild bool) (string, error) {
+// runProfile 权限与范围判定入口：按私聊 / 群聊分流。
+func (p *ProfilePlugin) runProfile(issuer named, chatroomWxid string, opts triggerOpts, atWxid string) (string, error) {
 	if issuer == nil || issuer.GetUsername() == "" {
 		return "", fmt.Errorf("无法确定消息来源")
 	}
-	isChatroom := chatroomWxid != ""
 	var owner *contact.Contact
 	if p.contact != nil {
 		owner = p.contact.GetOwner()
 	}
+	if chatroomWxid == "" {
+		return p.runPrivateProfile(issuer, owner, opts)
+	}
+	return p.runChatroomProfile(issuer, owner, chatroomWxid, opts, atWxid)
+}
 
-	// 私聊仅主人可查询：非群聊且发信人不是主人则拦截
-	if !isChatroom {
-		if owner == nil {
-			return "私聊查询需先配置主人（Owner）", nil
+// runPrivateProfile 私聊路径。
+// 任何人：查自己的全局画像（默认）或自己在 #指定群 的画像；
+// 主人：还可查指定成员的全局 / #指定群画像。
+// 私聊默认即全局范围，--global 开关在此路径无实际作用；范围由 #群名 决定。
+func (p *ProfilePlugin) runPrivateProfile(issuer named, owner *contact.Contact, opts triggerOpts) (string, error) {
+	isOwner := owner != nil && issuer.GetUsername() == owner.GetUsername()
+
+	// 解析 #群名 → 群 wxid（scope；空 = 全局跨群）
+	scopeChatroom, scopeLabel := "", ""
+	if opts.group != "" {
+		wxid, display, err := p.resolveChatroom(opts.group)
+		if err != nil {
+			return err.Error(), nil
 		}
-		if issuer.GetUsername() != owner.GetUsername() {
-			return "私聊仅主人可查询人物画像", nil
-		}
+		scopeChatroom, scopeLabel = wxid, display
 	}
 
-	var scopeChatroom string // "" => 全局（跨群）
-	var memberWxid string
-	var displayName string
+	// 未指名或名字就是自己 → 查自己（人人可用）
+	targetName := strings.TrimSpace(opts.name)
+	if targetName == "" || isSelfName(issuer, targetName) {
+		return p.generate(scopeChatroom, issuer.GetUsername(), displayNameOf(issuer), opts.rebuild)
+	}
+
+	// 指定他人：仅主人可用
+	if !isOwner {
+		return "私聊中仅主人可查看他人画像；发「人物画像」查看自己的全局画像，或「人物画像 #群名」查看自己在指定群的画像", nil
+	}
+
+	// 主人查指定成员：#指定群时优先按群成员匹配（群显示名/昵称等），
+	// 未命中再按全局联系人解析（好友备注与群内显示名不一致的场景）
+	if scopeChatroom != "" {
+		if mem, ok := p.findMember(scopeChatroom, targetName); ok {
+			return p.generate(scopeChatroom, mem.GetUsername(), displayNameOf(mem), opts.rebuild)
+		}
+	}
+	wxid, display, err := p.resolveGlobal(targetName)
+	if err != nil {
+		if scopeChatroom != "" {
+			return fmt.Sprintf("未在群「%s」及联系人中找到成员：%s", scopeLabel, targetName), nil
+		}
+		return err.Error(), nil
+	}
+	return p.generate(scopeChatroom, wxid, display, opts.rebuild)
+}
+
+// runChatroomProfile 群聊路径：任意成员可查本群成员画像；--global 跨群；#群名 仅私聊可用。
+func (p *ProfilePlugin) runChatroomProfile(issuer named, owner *contact.Contact, chatroomWxid string, opts triggerOpts, atWxid string) (string, error) {
+	if opts.group != "" {
+		return "「#群名」仅私聊可用，群聊内默认生成本群画像", nil
+	}
+
+	var scopeChatroom, memberWxid, displayName string
+	targetName := strings.TrimSpace(opts.name)
 
 	switch {
-	case global:
+	case opts.global:
 		// @ 提人时直接用 wxid；否则按名字在全局联系人缓存中解析
 		if atWxid != "" {
 			memberWxid = atWxid
-			displayName = strings.TrimSpace(targetName)
+			displayName = targetName
 			if p.contact != nil {
 				if c := p.contact.Get(atWxid); c != nil && c.GetUsername() != "" {
 					displayName = displayNameOf(c)
 				}
 			}
 		} else {
-			if strings.TrimSpace(targetName) == "" {
+			if targetName == "" {
 				return "全局画像需指定成员昵称，例如「人物画像 张三 --global」", nil
 			}
 			wxid, disp, err := p.resolveGlobal(targetName)
@@ -127,16 +171,16 @@ func (p *ProfilePlugin) runProfile(issuer named, chatroomWxid, targetName, atWxi
 		}
 		scopeChatroom = ""
 
-	case isChatroom:
+	default:
 		// 优先级：@ 提人 wxid > 指定名字 > 未指定则默认查发起人自己
 		switch {
 		case atWxid != "":
 			memberWxid = atWxid
-			displayName = strings.TrimSpace(targetName)
+			displayName = targetName
 			if mem, ok := p.findMemberByWxid(chatroomWxid, atWxid); ok {
 				displayName = displayNameOf(mem)
 			}
-		case strings.TrimSpace(targetName) == "":
+		case targetName == "":
 			// 群内未指定成员：默认查发起人自己
 			memberWxid = issuer.GetUsername()
 			displayName = displayNameOf(issuer)
@@ -149,22 +193,63 @@ func (p *ProfilePlugin) runProfile(issuer named, chatroomWxid, targetName, atWxi
 			displayName = displayNameOf(mem)
 		}
 		scopeChatroom = chatroomWxid
-
-	default: // 私聊：只能查自己
-		if strings.TrimSpace(targetName) != "" && !isSelfName(issuer, targetName) {
-			return "私聊中只能查看自己的画像", nil
-		}
-		memberWxid = issuer.GetUsername()
-		displayName = displayNameOf(issuer)
-		scopeChatroom = "" // 私聊自己的画像按全局（跨群）处理
 	}
 
-	// 主人画像保护：仅主人可查。
+	// 主人画像保护：仅主人可查主人的画像
 	if owner != nil && memberWxid == owner.GetUsername() && issuer.GetUsername() != owner.GetUsername() {
 		return "无权查看该成员的画像", nil
 	}
 
-	return p.generate(scopeChatroom, memberWxid, displayName, rebuild)
+	return p.generate(scopeChatroom, memberWxid, displayName, opts.rebuild)
+}
+
+// resolveChatroom 按群名 / 群 wxid 解析群聊，返回群 wxid 与展示名。
+// 依次尝试：直接 wxid（@chatroom 结尾）→ 联系人缓存精确匹配（群名/备注）
+// → 包含匹配（唯一命中才采用，多个命中提示写全名）。
+// 按名字解析要求该群已在联系人缓存中（通常为已保存到通讯录的群）。
+func (p *ProfilePlugin) resolveChatroom(key string) (wxid, display string, err error) {
+	key = strings.TrimSpace(key)
+	if strings.HasSuffix(key, "@chatroom") {
+		display = key
+		if p.contact != nil {
+			if c := p.contact.Get(key); c != nil && c.GetUsername() != "" {
+				display = displayNameOf(c)
+			}
+		}
+		return key, display, nil
+	}
+	if p.contact == nil {
+		return "", "", fmt.Errorf("未找到群聊：%s（contact 能力未注入）", key)
+	}
+	var fuzzy []*contact.Contact
+	for _, c := range p.contact.List() {
+		if c == nil || !strings.HasSuffix(c.GetUsername(), "@chatroom") {
+			continue
+		}
+		nick, remark := strings.TrimSpace(c.GetNickname()), strings.TrimSpace(c.GetRemark())
+		if strings.EqualFold(nick, key) || strings.EqualFold(remark, key) {
+			return c.GetUsername(), displayNameOf(c), nil
+		}
+		if strings.Contains(nick, key) || strings.Contains(remark, key) {
+			fuzzy = append(fuzzy, c)
+		}
+	}
+	switch len(fuzzy) {
+	case 0:
+		return "", "", fmt.Errorf("未找到群聊：%s（群需已保存到通讯录，或直接使用群 wxid）", key)
+	case 1:
+		return fuzzy[0].GetUsername(), displayNameOf(fuzzy[0]), nil
+	default:
+		names := make([]string, 0, 6)
+		for i, c := range fuzzy {
+			if i >= 5 {
+				names = append(names, "…")
+				break
+			}
+			names = append(names, displayNameOf(c))
+		}
+		return "", "", fmt.Errorf("「%s」匹配到多个群聊：%s，请使用更完整的群名", key, strings.Join(names, "、"))
+	}
 }
 
 // resolveGlobal 按昵称/备注/用户名在全局联系人缓存中解析成员 wxid
@@ -178,7 +263,7 @@ func (p *ProfilePlugin) resolveGlobal(name string) (wxid, display string, err er
 			return c.GetUsername(), displayNameOf(c), nil
 		}
 	}
-	return "", "", fmt.Errorf("全局未找到成员：%s（非好友无法全局查询，可到其所在群内发「人物画像 %s」）", name, name)
+	return "", "", fmt.Errorf("全局未找到成员：%s（非好友无法全局查询，可到其所在群内发「人物画像 %s」，或私聊主人加「#群名」在指定群内匹配）", name, name)
 }
 
 // findMember 在当前群成员列表中按群显示名/昵称/备注/用户名匹配。

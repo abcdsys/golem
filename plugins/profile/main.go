@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/sbgayhub/golem/sdk/chatroom"
@@ -38,8 +39,8 @@ func (p *ProfilePlugin) GetMetadata() *plugin.Metadata {
 	return &plugin.Metadata{
 		Name:        "profile",
 		Author:      "ovo",
-		Version:     "1.0.0",
-		Description: "群成员人物画像插件：基于历史发言经 AI 生成/增量更新画像并渲染图片发送。历史发言经 statistics.query_messages 能力获取，LLM 经 ai.chat；按配置 RenderImage 决定渲染图片（经 markdown.to.image，要求 LLM 输出 markdown）或发送纯文本（要求 LLM 输出无 markdown 符号的纯文本）。",
+		Version:     "1.1.1",
+		Description: "群成员人物画像插件：基于历史发言经 AI 生成/增量更新画像并渲染图片发送。历史发言经 statistics.query_messages 能力获取，LLM 经 ai.chat；按配置 RenderImage 决定渲染图片（经 markdown.to.image，要求 LLM 输出 markdown）或发送纯文本（要求 LLM 输出无 markdown 符号的纯文本）。群聊任意成员可查本群成员；私聊人人可查自己的全局画像或自己在 #指定群 的画像，主人（Owner）还可查指定成员的全局 / #指定群画像。",
 		Priority:    0,
 		Next:        false,
 		AlwaysRun:   false,
@@ -50,6 +51,17 @@ func (p *ProfilePlugin) GetMetadata() *plugin.Metadata {
 func (p *ProfilePlugin) GetSubscriptions() []string {
 	return []string{message.TypeText.Topic}
 }
+
+// profileHelpText 「画像帮助」回复的用法说明
+const profileHelpText = "【人物画像】用法：\n" +
+	"群聊：\n" +
+	"人物画像 → 自己在本群的画像\n" +
+	"人物画像 张三 / 人物画像@张三 → 查本群成员\n" +
+	"末尾加 --global → 跨群全局画像；--rebuild → 从头重建\n" +
+	"私聊：\n" +
+	"人物画像 → 自己的全局画像\n" +
+	"人物画像 #群名 → 自己在指定群的画像\n" +
+	"主人可查他人：人物画像 张三 [#群名]"
 
 // OnEvent 消息事件：检测「人物画像」触发语，异步生成并回复
 func (p *ProfilePlugin) OnEvent(event *plugin.Event) (bool, error) {
@@ -65,12 +77,20 @@ func (p *ProfilePlugin) OnEvent(event *plugin.Event) (bool, error) {
 		return false, nil
 	}
 
-	name, global, rebuild, triggered := parseTrigger(msg)
+	switch strings.TrimSpace(msg.GetContent()) {
+	case "画像帮助", "人物画像帮助":
+		if err := p.sendText(msg.GetSender(), profileHelpText); err != nil {
+			slog.Warn("[profile] 发送帮助失败", "err", err)
+		}
+		return true, nil
+	}
+
+	opts, triggered := parseTrigger(msg)
 	if !triggered {
 		return false, nil
 	}
 
-	return p.handleProfile(msg, name, global, rebuild)
+	return p.handleProfile(msg, opts)
 }
 
 // OnLoad 插件加载时调用

@@ -29,7 +29,7 @@ func (p *DemosPlugin) GetMetadata() *plugin.Metadata {
 	return &plugin.Metadata{
 		Name:        "demos",
 		Author:      "Golem Team",
-		Version:     "1.0.0",
+		Version:     "1.1.0",
 		Description: "Demos 娱乐功能插件",
 		Priority:    0,
 		Next:        false,
@@ -82,24 +82,11 @@ func (p *DemosPlugin) OnEvent(e *plugin.Event) (bool, error) {
 		return false, nil
 	}
 
-	for _, key := range p.sortedKeys() {
-		var arg string
-		if text == key {
-			arg = ""
-		} else if strings.HasPrefix(text, key+" ") {
-			arg = strings.TrimSpace(text[len(key):])
-		} else {
-			continue
-		}
-
-		handled, err := p.handlers[key](receiver, arg)
-		if err != nil {
-			slog.Error("[demos] 处理命令失败", "key", key, "err", err)
-			p.sendText(receiver, "哎呀，翻车了！这个功能暂时罢工了，请稍后再试试吧~")
-			return true, nil
-		}
-		return handled, nil
+	handled, err := p.dispatch(receiver, text)
+	if err != nil {
+		slog.Error("[demos] 处理命令失败", "text", text, "err", err)
+		p.sendText(receiver, "哎呀，翻车了！这个功能暂时罢工了，请稍后再试试吧~")
+		return true, nil
 	}
-
-	return false, nil
+	return handled, nil
 }

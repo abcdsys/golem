@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/sbgayhub/golem/sdk/chatroom"
 	"github.com/sbgayhub/golem/sdk/contact"
@@ -14,6 +16,9 @@ import (
 )
 
 const capabilityQueryMessages = "statistics.query_messages"
+
+// timeLayout statistics 表 timestamp 列的本地时间格式，也是 since 参数的格式
+const timeLayout = "2006-01-02 15:04:05"
 
 func main() {
 	plugin.Start(&StatisticsPlugin{})
@@ -32,7 +37,7 @@ func (p *StatisticsPlugin) GetMetadata() *plugin.Metadata {
 	return &plugin.Metadata{
 		Name:        "statistics",
 		Author:      "ovo",
-		Version:     "1.2.0",
+		Version:     "1.3.0",
 		Description: "消息统计插件，记录消息并提供群发言排行/详情；暴露 statistics.query_messages 能力供其它插件查询历史发言",
 		Priority:    -1 << 31,
 		Next:        true,
@@ -59,14 +64,23 @@ func (p *StatisticsPlugin) OnCall(capability string, args map[string]string) (st
 	}
 }
 
-// handleQueryMessages 查询成员历史发言，返回 JSON 数组（时间正序）。
-// 入参：member（必）、chatroom（可选，空=跨群）、since_id（可选，默认0）、limit（可选，默认0=不限）
+// handleQueryMessages 查询历史发言，返回 JSON 数组（时间正序）。
+// 入参：member（可选，成员 wxid）、chatroom（可选，群 wxid），两者至少给一个：
+// 都给=群内成员；仅 chatroom=整群；仅 member=跨群全局。
+// since（可选，本地时间下限，格式 2006-01-02 15:04:05，含边界）、
+// since_id（可选，默认0）、limit（可选，默认0=不限）。
 func (p *StatisticsPlugin) handleQueryMessages(args map[string]string) (string, []byte, error) {
 	member := args["member"]
-	if member == "" {
-		return "", nil, errors.New("member is required")
+	chatroom := args["chatroom"]
+	if member == "" && chatroom == "" {
+		return "", nil, errors.New("member or chatroom is required")
 	}
-	chatroom := args["chatroom"] // 空表示跨群全局
+	since := args["since"]
+	if since != "" {
+		if _, err := time.ParseInLocation(timeLayout, since, time.Local); err != nil {
+			return "", nil, fmt.Errorf("invalid since %q (want %s): %w", since, timeLayout, err)
+		}
+	}
 	sinceID, _ := strconv.ParseInt(args["since_id"], 10, 64)
 	limit, _ := strconv.Atoi(args["limit"])
 
@@ -77,7 +91,7 @@ func (p *StatisticsPlugin) handleQueryMessages(args map[string]string) (string, 
 		return "", nil, errors.New("store is not initialized")
 	}
 
-	msgs, err := store.queryMessages(chatroom, member, sinceID, limit)
+	msgs, err := store.queryMessages(chatroom, member, since, sinceID, limit)
 	if err != nil {
 		return "", nil, err
 	}

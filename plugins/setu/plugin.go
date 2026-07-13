@@ -50,7 +50,7 @@ func (p *SetuPlugin) GetMetadata() *plugin.Metadata {
 	return &plugin.Metadata{
 		Name:        "setu",
 		Author:      "Golem Team",
-		Version:     "1.0.0",
+		Version:     "1.0.1",
 		Description: "色图插件 - 提供各种图片和视频",
 		Priority:    -100,
 	}
@@ -97,6 +97,8 @@ func (p *SetuPlugin) OnEvent(e *plugin.Event) (bool, error) {
 
 	// 匹配关键词
 	switch text {
+	case "setu帮助", "色图帮助":
+		return p.handleHelp(receiver)
 	case "plmm", "漂亮妹妹", "来点美女":
 		return p.handlePlmm(receiver)
 	case "来点黑丝":

@@ -36,23 +36,26 @@
 
 ## 能力：statistics.query_messages
 
-本插件暴露 `statistics.query_messages` 能力，供其它插件（如 `profile`）查询成员历史发言。
+本插件暴露 `statistics.query_messages` 能力，供其它插件（如 `profile`、`wordcloud`）查询历史发言。
 
 **入参** `map[string]string`：
 
 | key | 必需 | 含义 |
 |---|---|---|
-| `member` | 是 | 成员 wxid |
-| `chatroom` | 否 | 群 wxid；空/缺省=跨群全局 |
+| `member` | 与 chatroom 至少一个 | 成员 wxid；缺省=不限成员（整群/全局） |
+| `chatroom` | 与 member 至少一个 | 群 wxid；缺省=跨群全局 |
+| `since` | 否 | 本地时间下限（含边界），格式 `2006-01-02 15:04:05` |
 | `since_id` | 否 | 只取 id > since_id（增量水位线）；缺省=0 |
 | `limit` | 否 | >0 时取最近 limit 条并反转为时间正序；0=不限 |
+
+组合语义：`chatroom`+`member`=群内成员；仅 `chatroom`=整群；仅 `member`=跨群全局。
 
 **返回**：`mime="json"`，JSON 数组（时间正序）：
 ```json
 [{"id":123,"content":"...","timestamp":"2026-07-08 10:51:52"}, ...]
 ```
 
-> timestamp 为本机本地时间（statistics 表存的就是本地时间）。仅返回 `type='文本'` 的消息。
+> timestamp 为本机本地时间（statistics 表存的就是本地时间），`since` 也按本地时间比较。仅返回 `type='文本'` 的消息。
 
 ## 使用说明
 
@@ -462,7 +465,7 @@ sqlite3 statistics.db "SELECT * FROM analysis" -json > analysis.json
 ## 开发信息
 
 - **插件名称**：statistics
-- **版本**：1.0.0
+- **版本**：1.3.0
 - **作者**：ovo
 - **依赖**：modernc.org/sqlite v1.52.0
 - **SDK 版本**：golem/sdk v0.1.1

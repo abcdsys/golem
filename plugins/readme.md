@@ -666,6 +666,7 @@ cp my_plugin.exe ../
 | **universal** | 规则驱动的通用 API 请求插件 |
 | **video_parser** | 视频在线解析插件 |
 | **gg** | 图片生成插件，基于 gg 库 |
+| **wordcloud** | 词云插件，统计群聊发言生成词云图片 |
 
 ---
 

@@ -20,6 +20,11 @@ vars:
       music,
       fake_forward,
       profile,
+      wordcloud,
+      demos,
+      setu,
+      farm,
+      robbery,
     ]
 
 tasks:
