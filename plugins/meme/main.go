@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/sbgayhub/golem/sdk/chatroom"
 	"github.com/sbgayhub/golem/sdk/contact"
 	"github.com/sbgayhub/golem/sdk/message"
 	"github.com/sbgayhub/golem/sdk/plugin"
@@ -18,8 +19,9 @@ type Config struct {
 }
 
 type MemePlugin struct {
-	message message.Ability
-	contact contact.Ability
+	message  message.Ability
+	contact  contact.Ability
+	chatroom chatroom.Ability
 	plugin.ConfigAbility[Config]
 	mu    sync.RWMutex
 	cache map[string]*memeInfo
@@ -122,21 +124,21 @@ func (m *MemePlugin) OnEvent(event *plugin.Event) (bool, error) {
 			m.sendText(event, fmt.Sprintf("表情 [%s] 需要两张图片，请@或引用一个用户", keyword))
 			return true, nil
 		}
-		img1, err := m.uploadImage(target.Avatar)
-		if err != nil {
-			slog.Warn("上传目标头像失败", "err", err)
-			m.sendText(event, "上传头像失败，请稍后重试")
-			return true, nil
-		}
-		img2, err := m.uploadImage(sender.Avatar)
+		img1, err := m.uploadImage(sender.Avatar)
 		if err != nil {
 			slog.Warn("上传发送者头像失败", "err", err)
 			m.sendText(event, "上传头像失败，请稍后重试")
 			return true, nil
 		}
+		img2, err := m.uploadImage(target.Avatar)
+		if err != nil {
+			slog.Warn("上传目标头像失败", "err", err)
+			m.sendText(event, "上传头像失败，请稍后重试")
+			return true, nil
+		}
 		images = []map[string]string{
-			{"name": target.Nickname, "id": img1},
-			{"name": sender.Nickname, "id": img2},
+			{"name": sender.Nickname, "id": img1},
+			{"name": target.Nickname, "id": img2},
 		}
 	default:
 		user := target

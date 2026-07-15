@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/xml"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -14,6 +15,27 @@ import (
 func extractText(msg *message.Message) string {
 	if msg.Type.Code == message.TypeText.Code {
 		return msg.Content
+	}
+	if msg.Type.Code == message.TypeAppQuote.Code {
+		val := extractQuoteContent(msg)
+		if val != "" {
+			return val
+		}
+		return msg.Content
+	}
+	return ""
+}
+
+func extractQuoteContent(msg *message.Message) string {
+	if app := msg.GetApp(); app != nil {
+		xmlStr := app.GetXml()
+		// 提取 <title> 内容（引用消息的文本摘要）
+		var data struct {
+			Title string `xml:"title"`
+		}
+		if err := xml.Unmarshal([]byte(xmlStr), &data); err == nil && data.Title != "" {
+			return data.Title
+		}
 	}
 	return ""
 }
