@@ -68,6 +68,7 @@ func (m *MemePlugin) sendText(event *plugin.Event, text string) {
 	}
 }
 
+// handleList 以聊天记录卡片形式返回中文关键词列表
 func (m *MemePlugin) handleList(event *plugin.Event, prefix string) bool {
 	infos := m.getInfoList()
 	if len(infos) == 0 {
@@ -80,36 +81,41 @@ func (m *MemePlugin) handleList(event *plugin.Event, prefix string) bool {
 		return true
 	}
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("可用表情列表 共%d个\n\n", len(infos)))
-
-	for i, info := range infos {
-		if len(info.Keywords) > 0 {
-			sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, strings.Join(info.Keywords, "/")))
+	const batchSize = 20
+	var records []record
+	for i := 0; i < len(infos); i += batchSize {
+		end := i + batchSize
+		if end > len(infos) {
+			end = len(infos)
 		}
-		if i >= 50 {
-			sb.WriteString("\n... 更多请使用 meme reload 刷新")
-			break
+		var entries []string
+		for _, item := range infos[i:end] {
+			if len(item.Keywords) > 0 {
+				entries = append(entries, strings.Join(item.Keywords, "/"))
+			}
 		}
+		records = append(records, record{
+			name:    fmt.Sprintf("第 %d-%d 条", i+1, end),
+			content: strings.Join(entries, "、"),
+			time:    fmt.Sprintf("%d-%d", i+1, end),
+		})
 	}
 
-	if _, err := m.message.Send(&message.Message{
-		Content:  sb.String(),
-		Receiver: receiver,
-		Type:     message.TypeText,
-		Data:     &message.Message_Text{Text: &message.TextData{Content: sb.String()}},
-	}); err != nil {
-		slog.Warn("发送列表失败", "err", err)
-	}
+	title := fmt.Sprintf("可用表情列表 共%d个", len(infos))
+	desc := fmt.Sprintf("使用方法: %s 名称", prefix)
+	m.sendRecord(receiver, title, desc, records)
 	return true
 }
 
+// buildRecordXml 构建聊天记录卡片的 XML 内容
 func buildRecordXml(title, desc string, records []record) string {
 	var sb strings.Builder
+
 	sb.WriteString("<![CDATA[<recordinfo>\n")
 	sb.WriteString(fmt.Sprintf("<title>%s</title>\n", title))
 	sb.WriteString(fmt.Sprintf("<desc>%s</desc>\n", desc))
 	sb.WriteString(fmt.Sprintf("<datalist count=\"%d\">\n", len(records)))
+
 	for _, r := range records {
 		t := time.Now()
 		sb.WriteString(fmt.Sprintf(`<dataitem datatype="1">`+
@@ -125,7 +131,28 @@ func buildRecordXml(title, desc string, records []record) string {
 	return sb.String()
 }
 
+// sendRecord 发送聊天记录卡片消息
 func (m *MemePlugin) sendRecord(receiver *contact.Contact, title, desc string, records []record) {
-	_ = buildRecordXml(title, desc, records)
-	slog.Warn("聊天记录卡片发送功能暂未实现")
+	recordXml := buildRecordXml(title, desc, records)
+	appXml := fmt.Sprintf(`<appmsg>`+
+		`<title>%s</title>`+
+		`<des>%s</des>`+
+		`<action>view</action>`+
+		`<type>19</type>`+
+		`<url>https://support.weixin.qq.com/cgi-bin/mmsupport-bin/readtemplate?t=page/favorite_record__w_unsupport&amp;from=singlemessage&amp;isappinstalled=0</url>`+
+		`<recorditem>%s</recorditem>`+
+		`</appmsg>`, title, desc, recordXml)
+	if _, err := m.message.Send(&message.Message{
+		Content:  title,
+		Receiver: receiver,
+		Type:     message.TypeApplication,
+		Data: &message.Message_App{App: &message.AppData{
+			SubType: 19,
+			Title:   title,
+			Desc:    desc,
+			Xml:     appXml,
+		}},
+	}); err != nil {
+		slog.Warn("发送聊天记录失败", "err", err)
+	}
 }
